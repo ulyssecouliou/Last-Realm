@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Backend API server for the Last Realm project, built with Express.js and PostgreSQL.",
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
@@ -16,11 +16,12 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "pg": "^8.11.3",
-    "sequelize": "^6.35.0",
-    "react-router-dom": "^7.9.5"
+    "pg": "^8.16.3",
+    "react-router-dom": "^7.9.5",
+    "sequelize": "^6.37.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
-  }
+  },
+  "type": "commonjs"
 }
