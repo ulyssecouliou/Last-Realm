@@ -1,17 +1,18 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const { user, logout, isLoading } = useAuthStore();
+  const navigate = useNavigate();
 
   const handleLogout = async () => {
     await logout();
   };
 
   const handleStartGame = () => {
-    // TODO: Implement game start logic
-    console.log('Starting Last Realm game...');
+    navigate('/game');
   };
 
   if (isLoading) {

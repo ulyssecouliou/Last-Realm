@@ -4,6 +4,7 @@ import useAuthStore from './store/authStore';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Dashboard from './components/Dashboard';
+import Game from './components/Game';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -39,6 +40,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/game" 
+            element={
+              <ProtectedRoute>
+                <Game />
               </ProtectedRoute>
             } 
           />
