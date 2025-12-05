@@ -16,6 +16,18 @@ class Player {
     this.knockbackX = 0;
     this.knockbackY = 0;
     this.knockbackDecay = 0.9; // Facteur de réduction du recul
+    // Hitbox pour debug visuel
+    this.hitboxSprite = null;
+    this.hitboxRadius = 20; // Rayon de collision du joueur
+    // Multiplicateurs pour les powerups
+    this.speedMultiplier = 1;
+    this.rotationSpeedMultiplier = 1;
+    this.sizeMultiplier = 1;
+    // Système d'expérience
+    this.level = 1;
+    this.experience = 0;
+    this.experienceToNextLevel = 100; // XP nécessaire pour le niveau suivant
+    this.experienceBar = null;
   }
 
   update(keys, mapWidth, mapHeight) {
@@ -90,6 +102,33 @@ class Player {
       this.knockbackX = (dx / distance) * force;
       this.knockbackY = (dy / distance) * force;
     }
+  }
+
+  setExperienceBar(experienceBar) {
+    this.experienceBar = experienceBar;
+  }
+
+  gainExperience(amount) {
+    this.experience += amount;
+    console.log(`💫 +${amount} XP! Total: ${this.experience}/${this.experienceToNextLevel}`);
+    
+    // Vérifier si on monte de niveau
+    if (this.experience >= this.experienceToNextLevel) {
+      this.levelUp();
+      return true; // Indique qu'on a monté de niveau
+    }
+    return false;
+  }
+
+  levelUp() {
+    this.level++;
+    this.experience -= this.experienceToNextLevel;
+    this.experienceToNextLevel = Math.floor(this.experienceToNextLevel * 1.5); // +50% XP requis par niveau
+    console.log(`🎉 NIVEAU ${this.level}! Prochain niveau: ${this.experienceToNextLevel} XP`);
+  }
+
+  getExperiencePercent() {
+    return (this.experience / this.experienceToNextLevel) * 100;
   }
 }
 
@@ -389,8 +428,74 @@ const Game = () => {
     return hitbox;
   };
 
+  // Fonction pour créer la barre d'expérience
+  const createExperienceBar = (player) => {
+    const expBarContainer = new PIXI.Container();
+    
+    // Barre de fond (grise)
+    const background = new PIXI.Graphics();
+    background.beginFill(0x333333, 0.8);
+    background.drawRect(-50, -8, 100, 8);
+    background.endFill();
+    
+    // Barre d'expérience (bleue)
+    const expBar = new PIXI.Graphics();
+    expBar.beginFill(0x0099ff, 1);
+    expBar.drawRect(-50, -8, 100, 8);
+    expBar.endFill();
+    
+    // Texte du niveau
+    const levelText = new PIXI.Text(`Niv.${player.level}`, {
+      fontFamily: 'Arial',
+      fontSize: 12,
+      fill: 0xffffff,
+      stroke: 0x000000,
+      strokeThickness: 1
+    });
+    levelText.anchor.set(0.5);
+    levelText.y = -20;
+    
+    expBarContainer.addChild(background);
+    expBarContainer.addChild(expBar);
+    expBarContainer.addChild(levelText);
+    
+    // Stocker les références pour les mises à jour
+    expBarContainer.expBar = expBar;
+    expBarContainer.levelText = levelText;
+    
+    return expBarContainer;
+  };
+
+  // Fonction pour mettre à jour la barre d'expérience
+  const updateExperienceBar = (player) => {
+    if (player.experienceBar) {
+      const percent = player.getExperiencePercent();
+      const width = (percent / 100) * 100; // Largeur proportionnelle
+      
+      // Redessiner la barre d'expérience
+      player.experienceBar.expBar.clear();
+      player.experienceBar.expBar.beginFill(0x0099ff, 1);
+      player.experienceBar.expBar.drawRect(-50, -8, width, 8);
+      player.experienceBar.expBar.endFill();
+      
+      // Mettre à jour le texte du niveau
+      player.experienceBar.levelText.text = `Niv.${player.level}`;
+      
+      // Positionner au-dessus du joueur
+      player.experienceBar.x = player.x;
+      player.experienceBar.y = player.y - 40;
+    }
+  };
+
   useEffect(() => {
     console.log('🎮 Game component mounted - Initializing game');
+    
+    // Éviter la double initialisation
+    if (appRef.current) {
+      console.log('⚠️ Jeu déjà initialisé, ignoré');
+      return;
+    }
+    
     const initializeGame = async () => {
       try {
         // Créer l'application PixiJS
@@ -521,6 +626,12 @@ const Game = () => {
         gameWorld.addChild(playerHitbox);
         console.log('Hitbox du joueur créée');
 
+        // Créer la barre d'expérience au-dessus du joueur
+        const experienceBar = createExperienceBar(player);
+        player.setExperienceBar(experienceBar);
+        gameWorld.addChild(experienceBar);
+        console.log('Barre d\'expérience créée');
+
         console.log('🎯 Initialisation de l\'arme pour la bataille...');
         // Initialiser l'arme dans le backend ET récupérer les stats
         let weaponStats = {
@@ -646,26 +757,27 @@ const Game = () => {
               const monsterTexture = await PIXI.Assets.load('/monster.png.png');
               const monsterSprite = new PIXI.Sprite(monsterTexture);
               monsterSprite.anchor.set(0.5);
-              monsterSprite.scale.set(0.225); // Taille augmentée de 25% supplémentaire (0.18 * 1.25 = 0.225)
+              monsterSprite.scale.set(0.225);
               monster.setSprite(monsterSprite);
               gameWorld.addChild(monsterSprite);
+              console.log('� Monstre sprite chargé depuis image à', x, y);
             } catch (error) {
-              console.log('Image monstre non trouvée, création sprite de remplacement');
-              // Sprite de remplacement pour le monstre (taille x4)
+              console.log('� Image monstre non trouvée, création sprite de remplacement à', x, y);
+              // Sprite de remplacement pour le monstre (comme avant)
               const fallbackMonster = new PIXI.Graphics();
-              // Corps rouge (taille x4)
+              // Corps rouge
               fallbackMonster.beginFill(0xff0000);
-              fallbackMonster.drawCircle(0, 0, 90); // Taille augmentée de 25% supplémentaire (72 * 1.25 = 90)
+              fallbackMonster.drawCircle(0, 0, 90);
               fallbackMonster.endFill();
-              // Yeux blancs (taille x4)
+              // Yeux blancs
               fallbackMonster.beginFill(0xffffff);
-              fallbackMonster.drawCircle(-30, -22.5, 22.5); // Augmenté de 25% supplémentaire
-              fallbackMonster.drawCircle(30, -22.5, 22.5); // Augmenté de 25% supplémentaire
+              fallbackMonster.drawCircle(-30, -22.5, 22.5);
+              fallbackMonster.drawCircle(30, -22.5, 22.5);
               fallbackMonster.endFill();
-              // Pupilles noires (taille x4)
+              // Pupilles noires
               fallbackMonster.beginFill(0x000000);
-              fallbackMonster.drawCircle(-30, -22.5, 11.25); // Augmenté de 25% supplémentaire
-              fallbackMonster.drawCircle(30, -22.5, 11.25); // Augmenté de 25% supplémentaire
+              fallbackMonster.drawCircle(-30, -22.5, 11.25);
+              fallbackMonster.drawCircle(30, -22.5, 11.25);
               fallbackMonster.endFill();
               monster.setSprite(fallbackMonster);
               gameWorld.addChild(fallbackMonster);
@@ -677,17 +789,11 @@ const Game = () => {
             gameWorld.addChild(monsterHitbox);
             
             monstersRef.current.push(monster);
-            console.log('Monstre créé à la position:', x, y);
+            console.log('� Monstre créé à la position:', x, y);
           } catch (error) {
             console.error('Erreur création monstre:', error);
           }
         };
-
-        // Créer le premier monstre immédiatement pour tester
-        await createMonster();
-        
-        // Spawn des monstres toutes les 5 secondes
-        const monsterSpawnInterval = setInterval(createMonster, 5000);
 
         // Fonction pour créer un powerup
         const createPowerup = async (x, y, type) => {
@@ -725,21 +831,26 @@ const Game = () => {
           }
         };
 
-        // Créer le premier powerup IMMÉDIATEMENT près du joueur pour tester
-        createPowerup(MAP_WIDTH / 2 + 100, MAP_HEIGHT / 2, 'speed_boost');
+        // Pas de monstre ni powerup au démarrage - ils apparaîtront avec les timers
         
-        // Spawn des powerups toutes les 15 secondes
+        // Spawn des monstres toutes les 3 secondes (pour test)
+        const monsterSpawnInterval = setInterval(createMonster, 3000);
+
+        // Spawn des powerups toutes les 30 secondes (moins de spam)
         const powerupSpawnInterval = setInterval(() => {
-          // Position aléatoire sur la map
-          const x = Math.random() * MAP_WIDTH;
-          const y = Math.random() * MAP_HEIGHT;
-          
-          // Type de powerup aléatoire
-          const types = ['speed_boost', 'rotation_speed', 'size_boost'];
-          const randomType = types[Math.floor(Math.random() * types.length)];
-          
-          createPowerup(x, y, randomType);
-        }, 15000);
+          // Limiter à 3 powerups max sur la map
+          if (powerupsRef.current.length < 3) {
+            // Position aléatoire sur la map
+            const x = Math.random() * MAP_WIDTH;
+            const y = Math.random() * MAP_HEIGHT;
+            
+            // Type de powerup aléatoire
+            const types = ['speed_boost', 'rotation_speed', 'size_boost'];
+            const randomType = types[Math.floor(Math.random() * types.length)];
+            
+            createPowerup(x, y, randomType);
+          }
+        }, 30000);
 
         // Fonction pour mettre à jour l'affichage de la vie
         const updateHealthDisplay = () => {
@@ -781,17 +892,14 @@ const Game = () => {
               swordRef.current.update(gameWorld, createSwordHitboxSprite);
             }
             
-            // Mettre à jour tous les powerups
-            if (powerupsRef.current.length > 0) {
-              console.log('Vérification collision avec', powerupsRef.current.length, 'powerups');
-            }
+            // Mettre à jour tous les powerups (sans spam de logs)
             powerupsRef.current.forEach((powerup, idx) => {
               if (powerup.isAlive) {
                 powerup.update();
                 
                 // Vérifier collision avec le joueur (une seule fois)
                 if (powerup.checkCollision(playerRef.current) && !powerupCollisionDetectedRef.current) {
-                  console.log('Collision détectée avec powerup:', powerup.type);
+                  console.log('✨ Powerup ramassé:', powerup.type);
                   // Afficher le sélecteur de powerup avec le powerup actuel
                   setCurrentPowerup(powerup);
                   setShowPowerupSelector(true);
@@ -802,6 +910,9 @@ const Game = () => {
 
             // Mettre à jour la caméra pour suivre le joueur
             updateCamera();
+
+            // Mettre à jour la barre d'expérience
+            updateExperienceBar(playerRef.current);
 
             // Mettre à jour tous les monstres (avec évitement de superposition)
             monstersRef.current.forEach((monster, index) => {
@@ -814,6 +925,15 @@ const Game = () => {
                   const isDead = monster.takeDamage(swordRef.current.damage);
                   if (isDead) {
                     console.log('Monstre tué par l\'épée!');
+                    // Donner de l'expérience au joueur
+                    const leveledUp = playerRef.current.gainExperience(25);
+                    if (leveledUp) {
+                      // Déclencher un powerup automatiquement
+                      console.log('🎉 Niveau supérieur! Powerup automatique!');
+                      setCurrentPowerup({ type: 'level_up', isLevelUp: true }); // Powerup spécial de niveau
+                      setShowPowerupSelector(true);
+                      powerupCollisionDetectedRef.current = true;
+                    }
                   }
                 }
                 
@@ -906,11 +1026,11 @@ const Game = () => {
         console.warn('Type de powerup inconnu:', powerupType);
     }
     
-    // Détruire le powerup
-    if (currentPowerup && currentPowerup.sprite && currentPowerup.sprite.parent) {
+    // Détruire le powerup (seulement si c'est un vrai powerup, pas un level up)
+    if (currentPowerup && !currentPowerup.isLevelUp && currentPowerup.sprite && currentPowerup.sprite.parent) {
       currentPowerup.sprite.parent.removeChild(currentPowerup.sprite);
+      currentPowerup.isAlive = false;
     }
-    currentPowerup.isAlive = false;
     
     // Fermer le modal et réinitialiser le flag
     setShowPowerupSelector(false);
@@ -919,10 +1039,10 @@ const Game = () => {
   };
 
   const handlePowerupCancel = () => {
-    if (currentPowerup && currentPowerup.sprite && currentPowerup.sprite.parent) {
+    if (currentPowerup && !currentPowerup.isLevelUp && currentPowerup.sprite && currentPowerup.sprite.parent) {
       currentPowerup.sprite.parent.removeChild(currentPowerup.sprite);
+      currentPowerup.isAlive = false;
     }
-    currentPowerup.isAlive = false;
     setShowPowerupSelector(false);
     setCurrentPowerup(null);
     powerupCollisionDetectedRef.current = false;
