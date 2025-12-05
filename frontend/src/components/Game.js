@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as PIXI from 'pixi.js';
+import PowerupSelector from './PowerupSelector';
 
-// Classe Player avec système de vie
+  // Classe Player avec système de vie
 class Player {
   constructor(x, y) {
     this.x = x;
@@ -15,9 +16,6 @@ class Player {
     this.knockbackX = 0;
     this.knockbackY = 0;
     this.knockbackDecay = 0.9; // Facteur de réduction du recul
-    // Hitbox pour debug visuel
-    this.hitboxSprite = null;
-    this.hitboxRadius = 20; // Rayon de collision du joueur
   }
 
   update(keys, mapWidth, mapHeight) {
@@ -25,13 +23,11 @@ class Player {
     const oldX = this.x;
     const oldY = this.y;
     
-    // Déplacement avec limites de la map zoom x4
-    if (keys.left && this.x > 50) this.x -= this.speed;
-    if (keys.right && this.x < mapWidth - 50) this.x += this.speed;
-    if (keys.up && this.y > 50) this.y -= this.speed;
-    if (keys.down && this.y < mapHeight - 50) this.y += this.speed;
-
-    // Appliquer le recul (knockback)
+    // Déplacement avec limites de la map zoom x4 (avec multiplicateur de vitesse)
+    if (keys.left && this.x > 50) this.x -= this.speed * this.speedMultiplier;
+    if (keys.right && this.x < mapWidth - 50) this.x += this.speed * this.speedMultiplier;
+    if (keys.up && this.y > 50) this.y -= this.speed * this.speedMultiplier;
+    if (keys.down && this.y < mapHeight - 50) this.y += this.speed * this.speedMultiplier;    // Appliquer le recul (knockback)
     this.x += this.knockbackX;
     this.y += this.knockbackY;
     
@@ -231,8 +227,9 @@ class Sword {
       this.lastHitboxHeight = this.hitboxHeight;
     }
     
-    // Faire tourner l'épée
-    this.angle += this.rotationSpeed;
+    // Faire tourner l'épée (utiliser le rotationSpeedMultiplier du joueur s'il existe)
+    const speedMultiplier = this.player.rotationSpeedMultiplier || 1;
+    this.angle += this.rotationSpeed * speedMultiplier;
     
     // Calculer la position autour du joueur
     this.x = this.player.x + Math.cos(this.angle) * this.radius;
@@ -307,6 +304,44 @@ class Sword {
   }
 }
 
+// Classe Powerup
+// Classe Powerup
+class Powerup {
+  constructor(x, y, type) {
+    this.x = x;
+    this.y = y;
+    this.type = type;
+    this.sprite = null;
+    this.isAlive = true;
+    this.rotation = 0;
+    this.rotationSpeed = 0.05;
+  }
+
+  update() {
+    if (!this.sprite) return;
+    this.rotation += this.rotationSpeed;
+    this.sprite.rotation = this.rotation;
+  }
+
+  setSprite(sprite) {
+    this.sprite = sprite;
+    sprite.x = this.x;
+    sprite.y = this.y;
+  }
+
+  checkCollision(player) {
+    const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
+    return distance < 50;
+  }
+
+  destroy() {
+    this.isAlive = false;
+    if (this.sprite && this.sprite.parent) {
+      this.sprite.parent.removeChild(this.sprite);
+    }
+  }
+}
+
 const Game = () => {
   const gameRef = useRef(null);
   const appRef = useRef(null);
@@ -317,6 +352,12 @@ const Game = () => {
   const healthDisplayRef = useRef(null);
   const cameraRef = useRef({ x: 0, y: 0 });
   const backgroundRef = useRef(null);
+  const powerupsRef = useRef([]);
+  const [showPowerupSelector, setShowPowerupSelector] = useState(false);
+  const [currentPowerup, setCurrentPowerup] = useState(null);
+  const powerupSelectorTimeoutRef = useRef(null);
+  const powerupCollisionDetectedRef = useRef(false);
+  const gameWorldRef = useRef(null);
   const navigate = useNavigate();
 
   // Constantes de la map (zoom x4 de la taille de base)
@@ -349,6 +390,7 @@ const Game = () => {
   };
 
   useEffect(() => {
+    console.log('🎮 Game component mounted - Initializing game');
     const initializeGame = async () => {
       try {
         // Créer l'application PixiJS
@@ -367,6 +409,7 @@ const Game = () => {
 
         // Créer un conteneur pour le monde du jeu (séparé de l'UI)
         const gameWorld = new PIXI.Container();
+        gameWorldRef.current = gameWorld;
         app.stage.addChild(gameWorld);
 
         // Créer un conteneur UI séparé qui ne bouge pas avec la caméra
@@ -646,6 +689,58 @@ const Game = () => {
         // Spawn des monstres toutes les 5 secondes
         const monsterSpawnInterval = setInterval(createMonster, 5000);
 
+        // Fonction pour créer un powerup
+        const createPowerup = async (x, y, type) => {
+          try {
+            const powerup = new Powerup(x, y, type);
+            
+            // Configuration des couleurs
+            const powerupColors = {
+              speed_boost: 0xFFD700,
+              rotation_speed: 0xFF6B6B,
+              size_boost: 0x4ECDC4
+            };
+            
+            // Créer le sprite du powerup
+            const powerupSprite = new PIXI.Graphics();
+            const color = powerupColors[type] || 0xFFFFFF;
+            
+            // Dessiner un carré/boîte pour le powerup
+            powerupSprite.beginFill(color);
+            powerupSprite.drawRect(-25, -25, 50, 50);
+            powerupSprite.endFill();
+            
+            // Ajouter une bordure brillante
+            powerupSprite.lineStyle(3, 0xFFFFFF, 0.8);
+            powerupSprite.drawRect(-25, -25, 50, 50);
+            
+            powerupSprite.anchor?.set(0.5);
+            powerup.setSprite(powerupSprite);
+            gameWorld.addChild(powerupSprite);
+            powerupsRef.current.push(powerup);
+            
+            console.log('✨ Powerup créé:', type, 'à', x, y, 'Total powerups:', powerupsRef.current.length);
+          } catch (error) {
+            console.error('Erreur création powerup:', error);
+          }
+        };
+
+        // Créer le premier powerup IMMÉDIATEMENT près du joueur pour tester
+        createPowerup(MAP_WIDTH / 2 + 100, MAP_HEIGHT / 2, 'speed_boost');
+        
+        // Spawn des powerups toutes les 15 secondes
+        const powerupSpawnInterval = setInterval(() => {
+          // Position aléatoire sur la map
+          const x = Math.random() * MAP_WIDTH;
+          const y = Math.random() * MAP_HEIGHT;
+          
+          // Type de powerup aléatoire
+          const types = ['speed_boost', 'rotation_speed', 'size_boost'];
+          const randomType = types[Math.floor(Math.random() * types.length)];
+          
+          createPowerup(x, y, randomType);
+        }, 15000);
+
         // Fonction pour mettre à jour l'affichage de la vie
         const updateHealthDisplay = () => {
           if (healthDisplayRef.current && healthDisplayRef.current.text) {
@@ -686,6 +781,25 @@ const Game = () => {
               swordRef.current.update(gameWorld, createSwordHitboxSprite);
             }
             
+            // Mettre à jour tous les powerups
+            if (powerupsRef.current.length > 0) {
+              console.log('Vérification collision avec', powerupsRef.current.length, 'powerups');
+            }
+            powerupsRef.current.forEach((powerup, idx) => {
+              if (powerup.isAlive) {
+                powerup.update();
+                
+                // Vérifier collision avec le joueur (une seule fois)
+                if (powerup.checkCollision(playerRef.current) && !powerupCollisionDetectedRef.current) {
+                  console.log('Collision détectée avec powerup:', powerup.type);
+                  // Afficher le sélecteur de powerup avec le powerup actuel
+                  setCurrentPowerup(powerup);
+                  setShowPowerupSelector(true);
+                  powerupCollisionDetectedRef.current = true;
+                }
+              }
+            });
+
             // Mettre à jour la caméra pour suivre le joueur
             updateCamera();
 
@@ -719,6 +833,9 @@ const Game = () => {
               }
             });
 
+            // Nettoyer les powerups morts
+            powerupsRef.current = powerupsRef.current.filter(powerup => powerup.isAlive);
+
             // Nettoyer les monstres morts
             monstersRef.current = monstersRef.current.filter(monster => monster.isAlive);
           }
@@ -731,6 +848,10 @@ const Game = () => {
           window.removeEventListener('keydown', handleKeyDown);
           window.removeEventListener('keyup', handleKeyUp);
           clearInterval(monsterSpawnInterval);
+          clearInterval(powerupSpawnInterval);
+          if (powerupSelectorTimeoutRef.current) {
+            clearTimeout(powerupSelectorTimeoutRef.current);
+          }
           if (appRef.current) {
             appRef.current.destroy(true);
           }
@@ -755,6 +876,63 @@ const Game = () => {
     };
   }, []);
 
+  // Handler pour la sélection de powerup
+  const handlePowerupSelect = (powerupType) => {
+    console.log('Powerup sélectionné:', powerupType);
+    
+    if (!playerRef.current || !currentPowerup) return;
+    
+    // Appliquer l'effet du powerup
+    switch(powerupType) {
+      case 'speed_boost':
+        playerRef.current.speedMultiplier *= 1.5; // +50% vitesse
+        console.log('Speed multiplier:', playerRef.current.speedMultiplier);
+        break;
+      case 'rotation_speed':
+        playerRef.current.rotationSpeedMultiplier *= 2; // +100% vitesse rotation
+        console.log('Rotation speed multiplier:', playerRef.current.rotationSpeedMultiplier);
+        break;
+      case 'size_boost':
+        playerRef.current.sizeMultiplier *= 1.5; // +50% taille
+        if (playerRef.current.sprite) {
+          playerRef.current.sprite.scale.set(
+            playerRef.current.sprite.scale.x * 1.5,
+            playerRef.current.sprite.scale.y * 1.5
+          );
+        }
+        console.log('Size multiplier:', playerRef.current.sizeMultiplier);
+        break;
+      default:
+        console.warn('Type de powerup inconnu:', powerupType);
+    }
+    
+    // Détruire le powerup
+    if (currentPowerup && currentPowerup.sprite && currentPowerup.sprite.parent) {
+      currentPowerup.sprite.parent.removeChild(currentPowerup.sprite);
+    }
+    currentPowerup.isAlive = false;
+    
+    // Fermer le modal et réinitialiser le flag
+    setShowPowerupSelector(false);
+    setCurrentPowerup(null);
+    powerupCollisionDetectedRef.current = false;
+  };
+
+  const handlePowerupCancel = () => {
+    if (currentPowerup && currentPowerup.sprite && currentPowerup.sprite.parent) {
+      currentPowerup.sprite.parent.removeChild(currentPowerup.sprite);
+    }
+    currentPowerup.isAlive = false;
+    setShowPowerupSelector(false);
+    setCurrentPowerup(null);
+    powerupCollisionDetectedRef.current = false;
+  };
+
+  // Debug effect
+  useEffect(() => {
+    console.log('showPowerupSelector changed:', showPowerupSelector);
+  }, [showPowerupSelector]);
+
   return (
     <div style={{ 
       position: 'fixed',
@@ -769,6 +947,12 @@ const Game = () => {
       justifyContent: 'center',
       zIndex: 1000
     }}>
+      {showPowerupSelector && (
+        <PowerupSelector 
+          onSelect={handlePowerupSelect}
+          onCancel={handlePowerupCancel}
+        />
+      )}
       <div 
         ref={gameRef} 
         style={{ 
@@ -795,7 +979,7 @@ const Game = () => {
           <strong>Utilisez les flèches ↑↓←→ pour vous déplacer</strong>
         </p>
         <p style={{ margin: '5px 0', fontSize: '10px', opacity: 0.8 }}>
-          Code simple et direct - ça devrait marcher !
+          Collectez les powerups (carrés colorés) pour obtenir des bonus!
         </p>
         <button 
           onClick={() => navigate('/dashboard')}
