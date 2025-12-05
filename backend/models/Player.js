@@ -10,17 +10,22 @@ class Player {
     this.xp = 0;
     this.nextLevelXp = 100;
     this.lastUpdate = Date.now();
+    // Système de powerups
+    this.speedMultiplier = 1;
+    this.rotationSpeedMultiplier = 1;
+    this.sizeMultiplier = 1;
+    this.activePowerups = []; // Liste des powerups actifs
   }
 
   update(input, deltaTime = 16) {
     const oldX = this.x;
     const oldY = this.y;
 
-    // Déplacement simple
-    if (input.right) this.x += this.speed;
-    if (input.left) this.x -= this.speed;
-    if (input.up) this.y -= this.speed;
-    if (input.down) this.y += this.speed;
+    // Déplacement avec multiplicateur de vitesse
+    if (input.right) this.x += this.speed * this.speedMultiplier;
+    if (input.left) this.x -= this.speed * this.speedMultiplier;
+    if (input.up) this.y -= this.speed * this.speedMultiplier;
+    if (input.down) this.y += this.speed * this.speedMultiplier;
 
     // Limites d'écran (supposons 1920x1080 par défaut)
     const maxWidth = input.screenWidth || 1920;
@@ -37,6 +42,29 @@ class Player {
     return oldX !== this.x || oldY !== this.y;
   }
 
+  // Appliquer un powerup
+  applyPowerup(type) {
+    switch(type) {
+      case 'speed_boost':
+        this.speedMultiplier *= 1.5;
+        this.activePowerups.push({ type, appliedAt: Date.now(), multiplier: 1.5 });
+        console.log('Powerup vitesse appliqué:', this.speedMultiplier);
+        break;
+      case 'rotation_speed':
+        this.rotationSpeedMultiplier *= 2;
+        this.activePowerups.push({ type, appliedAt: Date.now(), multiplier: 2 });
+        console.log('Powerup rotation appliqué:', this.rotationSpeedMultiplier);
+        break;
+      case 'size_boost':
+        this.sizeMultiplier *= 1.5;
+        this.activePowerups.push({ type, appliedAt: Date.now(), multiplier: 1.5 });
+        console.log('Powerup taille appliqué:', this.sizeMultiplier);
+        break;
+      default:
+        console.log('Type de powerup inconnu:', type);
+    }
+  }
+
   getState() {
     return {
       id: this.id,
@@ -47,7 +75,11 @@ class Player {
       level: this.level,
       xp: this.xp,
       nextLevelXp: this.nextLevelXp,
-      lastUpdate: this.lastUpdate
+      lastUpdate: this.lastUpdate,
+      speedMultiplier: this.speedMultiplier,
+      rotationSpeedMultiplier: this.rotationSpeedMultiplier,
+      sizeMultiplier: this.sizeMultiplier,
+      activePowerups: this.activePowerups
     };
   }
 
