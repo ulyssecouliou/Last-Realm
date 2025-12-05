@@ -37,6 +37,7 @@ app.get('/health', (req, res) => {
 app.use('/api/users', require('./routes/users'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/game', require('./routes/game'));
+app.use('/api/weapons', require('./routes/weapons'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -58,9 +59,14 @@ async function startServer() {
     await sequelize.sync({ force: false });
     console.log('📊 Database synchronized');
     
+    // Initialiser automatiquement l'épée de base
+    const initWeapons = require('./scripts/initWeapons');
+    await initWeapons();
+    
     app.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
       console.log(`📍 API available at http://localhost:${PORT}`);
+      console.log(`⚔️  Épée de base initialisée automatiquement`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

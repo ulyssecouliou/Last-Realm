@@ -15,6 +15,9 @@ class Player {
     this.knockbackX = 0;
     this.knockbackY = 0;
     this.knockbackDecay = 0.9; // Facteur de réduction du recul
+    // Hitbox pour debug visuel
+    this.hitboxSprite = null;
+    this.hitboxRadius = 20; // Rayon de collision du joueur
   }
 
   update(keys, mapWidth, mapHeight) {
@@ -49,12 +52,24 @@ class Player {
       this.sprite.x = this.x;
       this.sprite.y = this.y;
     }
+    
+    // Mettre à jour la hitbox
+    if (this.hitboxSprite) {
+      this.hitboxSprite.x = this.x;
+      this.hitboxSprite.y = this.y;
+    }
   }
 
   setSprite(sprite) {
     this.sprite = sprite;
     sprite.x = this.x;
     sprite.y = this.y;
+  }
+
+  setHitboxSprite(hitboxSprite) {
+    this.hitboxSprite = hitboxSprite;
+    hitboxSprite.x = this.x;
+    hitboxSprite.y = this.y;
   }
 
   takeDamage(damage, attackerX = null, attackerY = null) {
@@ -93,6 +108,9 @@ class Monster {
     this.isAlive = true;
     this.health = 3; // Points de vie des monstres
     this.maxHealth = 3;
+    // Hitbox pour debug visuel
+    this.hitboxSprite = null;
+    this.hitboxRadius = 20; // Rayon de collision du monstre
   }
 
   update(otherMonsters = []) {
@@ -136,12 +154,24 @@ class Monster {
       this.sprite.x = this.x;
       this.sprite.y = this.y;
     }
+    
+    // Mettre à jour la hitbox
+    if (this.hitboxSprite) {
+      this.hitboxSprite.x = this.x;
+      this.hitboxSprite.y = this.y;
+    }
   }
 
   setSprite(sprite) {
     this.sprite = sprite;
     sprite.x = this.x;
     sprite.y = this.y;
+  }
+
+  setHitboxSprite(hitboxSprite) {
+    this.hitboxSprite = hitboxSprite;
+    hitboxSprite.x = this.x;
+    hitboxSprite.y = this.y;
   }
 
   // Vérifier collision avec le joueur
@@ -164,6 +194,9 @@ class Monster {
     if (this.sprite && this.sprite.parent) {
       this.sprite.parent.removeChild(this.sprite);
     }
+    if (this.hitboxSprite && this.hitboxSprite.parent) {
+      this.hitboxSprite.parent.removeChild(this.hitboxSprite);
+    }
   }
 }
 
@@ -176,10 +209,27 @@ class Sword {
     this.rotationSpeed = 0.005; // Vitesse de rotation réduite par 10 (0.05/10 = 0.005)
     this.sprite = null;
     this.damage = 1; // Dégâts infligés
+    // Hitbox pour debug visuel
+    this.hitboxSprite = null;
+    this.hitboxWidth = 25; // Largeur de la hitbox (épée étroite)
+    this.hitboxHeight = 700; // Hauteur de la hitbox (156 + 60% = 250px)
+    this.hitboxRadius = 30; // Garde l'ancien rayon pour la détection de collision
+    // Variables pour détecter les changements de taille
+    this.lastHitboxWidth = this.hitboxWidth;
+    this.lastHitboxHeight = this.hitboxHeight;
   }
 
-  update() {
+  update(gameWorld = null, createSwordHitboxSprite = null) {
     if (!this.player) return;
+    
+    // Vérifier si les dimensions de la hitbox ont changé
+    if (gameWorld && createSwordHitboxSprite && 
+        (this.hitboxWidth !== this.lastHitboxWidth || this.hitboxHeight !== this.lastHitboxHeight)) {
+      console.log(`Mise à jour hitbox épée: ${this.lastHitboxWidth}x${this.lastHitboxHeight} -> ${this.hitboxWidth}x${this.hitboxHeight}`);
+      this.updateHitboxSize(gameWorld, createSwordHitboxSprite);
+      this.lastHitboxWidth = this.hitboxWidth;
+      this.lastHitboxHeight = this.hitboxHeight;
+    }
     
     // Faire tourner l'épée
     this.angle += this.rotationSpeed;
@@ -194,6 +244,13 @@ class Sword {
       this.sprite.y = this.y;
       this.sprite.rotation = this.angle + Math.PI / 2; // Orienter l'épée
     }
+    
+    // Mettre à jour la hitbox avec rotation
+    if (this.hitboxSprite) {
+      this.hitboxSprite.x = this.x;
+      this.hitboxSprite.y = this.y;
+      this.hitboxSprite.rotation = this.angle + Math.PI / 2; // Même rotation que l'épée
+    }
   }
 
   setSprite(sprite) {
@@ -202,10 +259,51 @@ class Sword {
     sprite.y = this.y;
   }
 
-  // Vérifier collision avec un monstre
+  setHitboxSprite(hitboxSprite) {
+    this.hitboxSprite = hitboxSprite;
+    hitboxSprite.x = this.x;
+    hitboxSprite.y = this.y;
+  }
+
+  // Méthode pour recréer la hitbox avec de nouvelles dimensions
+  updateHitboxSize(gameWorld, createSwordHitboxSprite) {
+    // Supprimer l'ancienne hitbox
+    if (this.hitboxSprite && this.hitboxSprite.parent) {
+      this.hitboxSprite.parent.removeChild(this.hitboxSprite);
+    }
+    
+    // Créer une nouvelle hitbox avec les dimensions actuelles
+    const newHitbox = createSwordHitboxSprite(this.hitboxWidth, this.hitboxHeight, 0x0000ff, 0.2);
+    this.setHitboxSprite(newHitbox);
+    gameWorld.addChild(newHitbox);
+    
+    // Mettre à jour la position et rotation
+    if (this.hitboxSprite) {
+      this.hitboxSprite.x = this.x;
+      this.hitboxSprite.y = this.y;
+      this.hitboxSprite.rotation = this.angle + Math.PI / 2;
+    }
+  }
+
+  // Vérifier collision avec un monstre (détection rectangulaire précise)
   checkCollision(monster) {
-    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
-    return distance < 30; // Distance de collision de l'épée
+    // Détection rectangulaire orientée - plus précise
+    const dx = monster.x - this.x;
+    const dy = monster.y - this.y;
+    
+    // Rotation inverse pour ramener dans le repère de l'épée
+    const cos = Math.cos(-this.angle - Math.PI / 2);
+    const sin = Math.sin(-this.angle - Math.PI / 2);
+    
+    // Coordonnées du monstre dans le repère de l'épée
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+    
+    // Vérifier si le monstre est dans le rectangle de la hitbox
+    const halfWidth = this.hitboxWidth / 2;
+    const halfHeight = this.hitboxHeight / 2;
+    
+    return Math.abs(localX) <= halfWidth && Math.abs(localY) <= halfHeight;
   }
 }
 
@@ -224,6 +322,31 @@ const Game = () => {
   // Constantes de la map (zoom x4 de la taille de base)
   const MAP_WIDTH = 2400; // 4x plus grande que 600x600
   const MAP_HEIGHT = 2400; // 4x plus grande que 600x600
+
+  // Fonction pour créer une hitbox visuelle
+  const createHitboxSprite = (radius, color = 0xff0000, alpha = 0.3) => {
+    const hitbox = new PIXI.Graphics();
+    hitbox.beginFill(color, alpha);
+    hitbox.drawCircle(0, 0, radius);
+    hitbox.endFill();
+    // Ajouter un contour pour mieux voir
+    hitbox.lineStyle(2, color, 0.8);
+    hitbox.drawCircle(0, 0, radius);
+    return hitbox;
+  };
+
+  // Fonction pour créer une hitbox rectangulaire (pour l'épée)
+  const createSwordHitboxSprite = (width, height, color = 0x0000ff, alpha = 0.3) => {
+    const hitbox = new PIXI.Graphics();
+    hitbox.beginFill(color, alpha);
+    // Centrer la hitbox pour qu'elle s'étende équitablement vers l'avant et vers l'arrière
+    hitbox.drawRect(-width/2, -height/2, width, height);
+    hitbox.endFill();
+    // Ajouter un contour pour mieux voir
+    hitbox.lineStyle(2, color, 0.8);
+    hitbox.drawRect(-width/2, -height/2, width, height);
+    return hitbox;
+  };
 
   useEffect(() => {
     const initializeGame = async () => {
@@ -349,8 +472,50 @@ const Game = () => {
           console.log('Sprite de remplacement créé');
         }
 
-        // Créer l'épée qui tourne autour du joueur
-        const sword = new Sword(player);
+        // Créer la hitbox du joueur (cercle vert semi-transparent)
+        const playerHitbox = createHitboxSprite(player.hitboxRadius, 0x00ff00, 0.2);
+        player.setHitboxSprite(playerHitbox);
+        gameWorld.addChild(playerHitbox);
+        console.log('Hitbox du joueur créée');
+
+        console.log('🎯 Initialisation de l\'arme pour la bataille...');
+        // Initialiser l'arme dans le backend ET récupérer les stats
+        let weaponStats = {
+          damage: 1,
+          hitboxWidth: 50,
+          hitboxHeight: 160, // Même valeur que dans initializeWeapons
+          rotationSpeed: 0.005,
+          radius: 120
+        };
+
+        try {
+          console.log('🔄 Initialisation de l\'arme dans le backend...');
+          const response = await fetch('http://localhost:5000/api/weapons/initialize', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          console.log('📡 Réponse reçue:', response.status, response.statusText);
+          
+          if (response.ok) {
+            const backendStats = await response.json();
+            weaponStats = backendStats;
+            console.log('✅ Arme initialisée et stats chargées depuis le backend:', weaponStats);
+          } else {
+            console.warn('⚠️  Backend répond mais erreur:', response.status);
+          }
+        } catch (error) {
+          console.warn('⚠️  Backend indisponible, utilisation du fallback:', error.message);
+          console.log('🛡️  Stats de fallback utilisées:', weaponStats);
+        }
+
+        // Créer l'épée qui tourne autour du joueur avec les stats du backend
+        const sword = new Sword(player, weaponStats.radius);
+        sword.damage = weaponStats.damage;
+        sword.hitboxWidth = weaponStats.hitboxWidth;
+        sword.hitboxHeight = weaponStats.hitboxHeight;
+        sword.rotationSpeed = weaponStats.rotationSpeed;
         swordRef.current = sword;
 
         // Charger le sprite de l'épée
@@ -373,6 +538,12 @@ const Game = () => {
           gameWorld.addChild(fallbackSword);
           console.log('Sprite de remplacement épée créé');
         }
+
+        // Créer la hitbox de l'épée (rectangle bleu semi-transparent, plus réaliste)
+        const swordHitbox = createSwordHitboxSprite(sword.hitboxWidth, sword.hitboxHeight, 0x0000ff, 0.2);
+        sword.setHitboxSprite(swordHitbox);
+        gameWorld.addChild(swordHitbox);
+        console.log('Hitbox rectangulaire de l\'épée créée avec dimensions:', sword.hitboxWidth, 'x', sword.hitboxHeight);
 
         // Gestion des entrées
         const handleKeyDown = (event) => {
@@ -456,6 +627,11 @@ const Game = () => {
               monster.setSprite(fallbackMonster);
               gameWorld.addChild(fallbackMonster);
             }
+
+            // Créer la hitbox du monstre (cercle rouge semi-transparent)
+            const monsterHitbox = createHitboxSprite(monster.hitboxRadius, 0xff0000, 0.2);
+            monster.setHitboxSprite(monsterHitbox);
+            gameWorld.addChild(monsterHitbox);
             
             monstersRef.current.push(monster);
             console.log('Monstre créé à la position:', x, y);
@@ -505,9 +681,9 @@ const Game = () => {
             // Mettre à jour le joueur avec les limites de la map
             playerRef.current.update(keysRef.current, MAP_WIDTH, MAP_HEIGHT);
             
-            // Mettre à jour l'épée
+            // Mettre à jour l'épée avec les paramètres pour la mise à jour dynamique
             if (swordRef.current) {
-              swordRef.current.update();
+              swordRef.current.update(gameWorld, createSwordHitboxSprite);
             }
             
             // Mettre à jour la caméra pour suivre le joueur

@@ -1,13 +1,10 @@
 const { sequelize } = require('../config/database');
 const User = require('./User');
-
-// Define model associations here
-// Example:
-// User.hasMany(Post);
-// Post.belongsTo(User);
+const Weapon = require('./Weapon');
 
 // Export all models
 module.exports = {
   sequelize,
-  User
+  User,
+  Weapon
 };
