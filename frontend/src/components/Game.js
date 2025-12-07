@@ -229,6 +229,79 @@ class Sword {
   }
 }
 
+// Classe Spear (lance qui fait des coups devant le joueur)
+class Spear {
+  constructor(player) {
+    this.player = player;
+    this.sprite = null;
+    this.damage = 1;
+    this.attackCooldown = 500; // Millisecondes entre les attaques
+    this.lastAttackTime = 0;
+    this.isAttacking = false;
+    this.attackDuration = 200; // Durée de l'animation d'attaque en ms
+    this.attackStartTime = 0;
+    this.baseDistance = 80; // Distance de base devant le joueur
+    this.attackDistance = 140; // Distance pendant l'attaque
+    this.currentDistance = this.baseDistance;
+  }
+
+  update() {
+    if (!this.player) return;
+
+    const currentTime = Date.now();
+
+    // Gérer l'animation d'attaque
+    if (this.isAttacking) {
+      const attackProgress = (currentTime - this.attackStartTime) / this.attackDuration;
+      if (attackProgress >= 1) {
+        // Fin de l'attaque
+        this.isAttacking = false;
+        this.currentDistance = this.baseDistance;
+      } else {
+        // Animation d'extension de la lance (ease-out)
+        const easeOut = 1 - Math.pow(1 - attackProgress, 3);
+        this.currentDistance = this.baseDistance + (this.attackDistance - this.baseDistance) * easeOut;
+      }
+    }
+
+    // Attaque automatique si cooldown est écoulé
+    if (!this.isAttacking && currentTime - this.lastAttackTime > this.attackCooldown) {
+      this.attack(currentTime);
+    }
+
+    // Calculer la position devant le joueur dans la direction du mouvement
+    const direction = this.player.direction || { x: 0, y: -1 };
+    this.x = this.player.x + direction.x * this.currentDistance;
+    this.y = this.player.y + direction.y * this.currentDistance;
+
+    // Mettre à jour le sprite
+    if (this.sprite) {
+      this.sprite.x = this.x;
+      this.sprite.y = this.y;
+      // Orienter la lance dans la direction du joueur
+      this.sprite.rotation = Math.atan2(direction.y, direction.x);
+    }
+  }
+
+  attack(currentTime) {
+    this.isAttacking = true;
+    this.lastAttackTime = currentTime;
+    this.attackStartTime = currentTime;
+  }
+
+  setSprite(sprite) {
+    this.sprite = sprite;
+    sprite.x = this.x;
+    sprite.y = this.y;
+  }
+
+  // Vérifier collision avec un monstre
+  checkCollision(monster) {
+    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
+    return distance < 40; // Distance de collision de la lance
+  }
+}
+
 // Classe Powerup
 // Classe Powerup
 class Powerup {
@@ -257,6 +330,63 @@ class Powerup {
   checkCollision(player) {
     const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
     return distance < 50;
+  }
+
+  destroy() {
+    this.isAlive = false;
+    if (this.sprite && this.sprite.parent) {
+      this.sprite.parent.removeChild(this.sprite);
+    }
+  }
+}
+
+// Classe Arrow (pour le rodeur)
+class Arrow {
+  constructor(x, y, dirX, dirY) {
+    this.x = x;
+    this.y = y;
+    this.speed = 0.8;
+    this.velocityX = dirX * this.speed;
+    this.velocityY = dirY * this.speed;
+    this.sprite = null;
+    this.isAlive = true;
+    this.lifespan = 300; // Durée de vie en frames
+    this.age = 0;
+    this.direction = { x: dirX, y: dirY };
+  }
+
+  update(mapWidth = 2400, mapHeight = 2400) {
+    this.x += this.velocityX;
+    this.y += this.velocityY;
+    this.age++;
+
+    // Détruire la flèche après sa durée de vie
+    if (this.age > this.lifespan) {
+      this.destroy();
+    }
+
+    // Détruire la flèche s'elle sort de la map
+    if (this.x < -50 || this.x > mapWidth + 50 || this.y < -50 || this.y > mapHeight + 50) {
+      this.destroy();
+    }
+
+    if (this.sprite) {
+      this.sprite.x = this.x;
+      this.sprite.y = this.y;
+      // Orienter la flèche dans la direction de tir
+      this.sprite.rotation = Math.atan2(this.velocityY, this.velocityX);
+    }
+  }
+
+  setSprite(sprite) {
+    this.sprite = sprite;
+    sprite.x = this.x;
+    sprite.y = this.y;
+  }
+
+  checkCollision(monster) {
+    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
+    return distance < 35; // Distance de collision augmentée pour les flèches
   }
 
   destroy() {
@@ -386,6 +516,55 @@ class Rogue extends Player {
     super(x, y);
     this.characterType = 'rogue';
     this.speed = 0.6; // Plus rapide
+    this.lastArrowTime = 0;
+    this.arrowCooldown = 300; // Légèrement plus lent que le wizard
+    this.direction = { x: 0, y: -1 }; // Direction actuelle
+    this.maxArrows = 2; // Nombre max de flèches lancées en même temps
+    this.arrowsInFlight = 0; // Nombre de flèches actuellement en vol
+  }
+
+  canShoot(currentTime) {
+    return currentTime - this.lastArrowTime > this.arrowCooldown;
+  }
+
+  shoot(currentTime) {
+    this.lastArrowTime = currentTime;
+    
+    // Créer une flèche dans la direction du mouvement
+    const arrow = new Arrow(
+      this.x,
+      this.y,
+      this.direction.x,
+      this.direction.y
+    );
+    
+    return arrow;
+  }
+
+  updateDirection(keys) {
+    // Mettre à jour la direction en fonction des touches actives
+    let dirX = 0;
+    let dirY = 0;
+
+    if (keys.left) dirX = -1;
+    if (keys.right) dirX = 1;
+    if (keys.up) dirY = -1;
+    if (keys.down) dirY = 1;
+
+    // Normaliser la direction
+    if (dirX !== 0 || dirY !== 0) {
+      const length = Math.sqrt(dirX * dirX + dirY * dirY);
+      this.direction.x = dirX / length;
+      this.direction.y = dirY / length;
+    }
+  }
+
+  update(keys, mapWidth, mapHeight) {
+    // Mettre à jour la direction
+    this.updateDirection(keys);
+    
+    // Appeler la méthode update du parent
+    super.update(keys, mapWidth, mapHeight);
   }
 }
 
@@ -395,6 +574,33 @@ class FallenKnight extends Player {
     super(x, y);
     this.characterType = 'fallen_knight';
     this.speed = 0.4; // Même vitesse que le guerrier
+    this.direction = { x: 0, y: -1 }; // Direction actuelle pour la lance
+  }
+
+  updateDirection(keys) {
+    // Mettre à jour la direction en fonction des touches actives
+    let dirX = 0;
+    let dirY = 0;
+
+    if (keys.left) dirX = -1;
+    if (keys.right) dirX = 1;
+    if (keys.up) dirY = -1;
+    if (keys.down) dirY = 1;
+
+    // Normaliser la direction
+    if (dirX !== 0 || dirY !== 0) {
+      const length = Math.sqrt(dirX * dirX + dirY * dirY);
+      this.direction.x = dirX / length;
+      this.direction.y = dirY / length;
+    }
+  }
+
+  update(keys, mapWidth, mapHeight) {
+    // Mettre à jour la direction
+    this.updateDirection(keys);
+    
+    // Appeler la méthode update du parent
+    super.update(keys, mapWidth, mapHeight);
   }
 }
 
@@ -413,12 +619,14 @@ const Game = () => {
   const keysRef = useRef({ left: false, right: false, up: false, down: false });
   const monstersRef = useRef([]);
   const swordRef = useRef(null);
+  const spearRef = useRef(null);
   const healthDisplayRef = useRef(null);
   const levelDisplayRef = useRef(null);
   const cameraRef = useRef({ x: 0, y: 0 });
   const backgroundRef = useRef(null);
   const powerupsRef = useRef([]);
   const projectilesRef = useRef([]);
+  const arrowsRef = useRef([]);
   const [showPowerupSelector, setShowPowerupSelector] = useState(false);
   const [currentPowerup, setCurrentPowerup] = useState(null);
   const [showCharacterSelector, setShowCharacterSelector] = useState(true);
@@ -453,7 +661,9 @@ const Game = () => {
             '/rodeur.png',
             '/templier_dechu.png',
             '/projectile.png',
+            '/fleche.png',
             '/epee.png',
+            '/lance.png',
             '/monster.png.png',
             '/—Pngtree—pixel art red heart vector_21298284.png'
           ]);
@@ -674,6 +884,39 @@ const Game = () => {
           }
         }
 
+        // Créer la lance SEULEMENT pour le Templier Déchu (FallenKnight)
+        if (player instanceof FallenKnight) {
+          const spear = new Spear(player);
+          spearRef.current = spear;
+
+          // Charger le sprite de la lance
+          try {
+            const spearTexture = await PIXI.Assets.load('/lance.png');
+            const spearSprite = new PIXI.Sprite(spearTexture);
+            spearSprite.anchor.set(0, 0.5);
+            spearSprite.scale.set(0.4);
+            spear.setSprite(spearSprite);
+            gameWorld.addChild(spearSprite);
+            console.log('Lance chargée pour le templier déchu');
+          } catch (error) {
+            console.log('Erreur chargement lance, création sprite de remplacement');
+            // Sprite de remplacement pour la lance
+            const fallbackSpear = new PIXI.Graphics();
+            fallbackSpear.beginFill(0x8B4513); // Couleur marron pour le manche
+            fallbackSpear.drawRect(0, -5, 100, 10);
+            fallbackSpear.endFill();
+            fallbackSpear.beginFill(0xC0C0C0); // Couleur argent pour la pointe
+            fallbackSpear.moveTo(100, -10);
+            fallbackSpear.lineTo(130, 0);
+            fallbackSpear.lineTo(100, 10);
+            fallbackSpear.closePath();
+            fallbackSpear.endFill();
+            spear.setSprite(fallbackSpear);
+            gameWorld.addChild(fallbackSpear);
+            console.log('Sprite de remplacement lance créé');
+          }
+        }
+
         // Gestion des entrées
         const handleKeyDown = (event) => {
           switch(event.code) {
@@ -868,6 +1111,11 @@ const Game = () => {
               swordRef.current.update();
             }
 
+            // Mettre à jour la lance
+            if (spearRef.current) {
+              spearRef.current.update();
+            }
+
             // Tirer automatiquement les projectiles pour le magicien (continu, sans besoin de Tab)
             if (playerRef.current && (playerRef.current instanceof Wizard || playerRef.current.characterType === 'wizard')) {
               const currentTime = Date.now();
@@ -895,10 +1143,46 @@ const Game = () => {
               }
             }
 
+            // Tirer automatiquement les flèches pour le rodeur (continu)
+            if (playerRef.current && (playerRef.current instanceof Rogue || playerRef.current.characterType === 'rogue')) {
+              const currentTime = Date.now();
+              if (playerRef.current.canShoot(currentTime)) {
+                const arrow = playerRef.current.shoot(currentTime);
+                
+                // Créer le sprite de la flèche avec l'image
+                let arrowSprite;
+                try {
+                  const arrowTexture = PIXI.Assets.get('/fleche.png');
+                  arrowSprite = new PIXI.Sprite(arrowTexture);
+                  arrowSprite.scale.set(0.1);
+                } catch (error) {
+                  // Fallback: créer un rectangle jaune si l'image ne charge pas
+                  arrowSprite = new PIXI.Graphics();
+                  arrowSprite.beginFill(0xFFFF00);
+                  arrowSprite.drawRect(-15, -5, 30, 10);
+                  arrowSprite.endFill();
+                }
+                
+                arrow.setSprite(arrowSprite);
+                arrowSprite.x = arrow.x;
+                arrowSprite.y = arrow.y;
+                gameWorldRef.current.addChild(arrowSprite);
+                arrowsRef.current.push(arrow);
+                console.log('🏹 Flèche lancée! Position:', arrow.x.toFixed(0), arrow.y.toFixed(0), 'Vélocité:', arrow.velocityX.toFixed(2), arrow.velocityY.toFixed(2));
+              }
+            }
+
             // Mettre à jour tous les projectiles
             projectilesRef.current.forEach((projectile) => {
               if (projectile.isAlive) {
                 projectile.update(MAP_WIDTH, MAP_HEIGHT);
+              }
+            });
+
+            // Mettre à jour tous les flèches du rodeur
+            arrowsRef.current.forEach((arrow) => {
+              if (arrow.isAlive) {
+                arrow.update(MAP_WIDTH, MAP_HEIGHT);
               }
             });
             
@@ -944,6 +1228,20 @@ const Game = () => {
                   }
                 }
 
+                // Vérifier collision avec la lance
+                if (spearRef.current && spearRef.current.checkCollision(monster)) {
+                  const isDead = monster.takeDamage(spearRef.current.damage);
+                  if (isDead) {
+                    console.log('Monstre tué par la lance!');
+                    // Gagner de l'expérience
+                    const levelUp = playerRef.current.gainExperience(25);
+                    updateLevelDisplay();
+                    if (levelUp) {
+                      console.log('🎉 LEVEL UP! Niveau:', playerRef.current.level);
+                    }
+                  }
+                }
+
                 // Vérifier collision avec les projectiles (pour le magicien)
                 projectilesRef.current.forEach((projectile) => {
                   if (projectile.isAlive && projectile.checkCollision(monster)) {
@@ -951,6 +1249,23 @@ const Game = () => {
                     projectile.destroy();
                     if (isDead) {
                       console.log('Monstre tué par projectile!');
+                      // Gagner de l'expérience
+                      const levelUp = playerRef.current.gainExperience(25);
+                      updateLevelDisplay();
+                      if (levelUp) {
+                        console.log('🎉 LEVEL UP! Niveau:', playerRef.current.level);
+                      }
+                    }
+                  }
+                });
+
+                // Vérifier collision avec les flèches (pour le rodeur)
+                arrowsRef.current.forEach((arrow) => {
+                  if (arrow.isAlive && arrow.checkCollision(monster)) {
+                    const isDead = monster.takeDamage(1);
+                    arrow.destroy();
+                    if (isDead) {
+                      console.log('Monstre tué par flèche!');
                       // Gagner de l'expérience
                       const levelUp = playerRef.current.gainExperience(25);
                       updateLevelDisplay();
@@ -985,6 +1300,9 @@ const Game = () => {
 
             // Nettoyer les projectiles morts
             projectilesRef.current = projectilesRef.current.filter(projectile => projectile.isAlive);
+
+            // Nettoyer les flèches mortes
+            arrowsRef.current = arrowsRef.current.filter(arrow => arrow.isAlive);
           }
         };
 
@@ -1031,6 +1349,7 @@ const Game = () => {
     
     // Appliquer l'effet du powerup en fonction du type de personnage
     const isWizard = playerRef.current instanceof Wizard || playerRef.current.characterType === 'wizard';
+    const isRogue = playerRef.current instanceof Rogue || playerRef.current.characterType === 'rogue';
     
     // Powerups universels
     switch(powerupType) {
@@ -1041,10 +1360,10 @@ const Game = () => {
         break;
       case 'rotation_speed':
         // Pour le guerrier/autres classes avec épée = épée plus rapide
-        if (!isWizard) {
+        if (!isWizard && !isRogue) {
           playerRef.current.rotationSpeedMultiplier *= 2; // +100% vitesse rotation épée
           console.log('🌀 Épée rapide! Multiplicateur:', playerRef.current.rotationSpeedMultiplier);
-        } else {
+        } else if (isWizard) {
           // Pour le magicien = plus de projectiles en même temps
           playerRef.current.maxProjectiles = (playerRef.current.maxProjectiles || 1) + 1;
           console.log('💥 Multi-projectiles! Max projectiles:', playerRef.current.maxProjectiles);
@@ -1072,6 +1391,35 @@ const Game = () => {
         if (isWizard) {
           playerRef.current.projectileCooldown = Math.max(100, playerRef.current.projectileCooldown * 0.7); // -30% cooldown
           console.log('🔥 Tir rapide! Cooldown:', playerRef.current.projectileCooldown);
+        }
+        break;
+      case 'arrow_speed':
+        // Powerup spécifique au rodeur = flèches plus rapides
+        if (isRogue) {
+          playerRef.current.arrowCooldown = Math.max(100, playerRef.current.arrowCooldown * 0.75); // -25% cooldown
+          console.log('💨 Flèches rapides! Cooldown:', playerRef.current.arrowCooldown);
+        }
+        break;
+      case 'multi_arrows':
+        // Powerup spécifique au rodeur = plus de flèches
+        if (isRogue) {
+          playerRef.current.maxArrows = (playerRef.current.maxArrows || 1) + 1;
+          console.log('🎯 Multi-flèches! Max flèches:', playerRef.current.maxArrows);
+        }
+        break;
+      case 'spear_speed':
+        // Powerup spécifique au templier déchu = lance plus rapide
+        if (spearRef.current) {
+          spearRef.current.attackCooldown = Math.max(200, spearRef.current.attackCooldown * 0.7); // -30% cooldown
+          console.log('⚔️ Lance rapide! Cooldown:', spearRef.current.attackCooldown);
+        }
+        break;
+      case 'spear_range':
+        // Powerup spécifique au templier déchu = portée augmentée
+        if (spearRef.current) {
+          spearRef.current.baseDistance *= 1.5; // +50% distance de base
+          spearRef.current.attackDistance *= 1.5; // +50% distance d'attaque
+          console.log('📏 Portée augmentée! Distance:', spearRef.current.attackDistance);
         }
         break;
       default:
@@ -1157,6 +1505,16 @@ const Game = () => {
         {selectedCharacter?.id === 'wizard' && (
           <p style={{ margin: '5px 0', fontSize: '10px', opacity: 0.8 }}>
             Le magicien lance automatiquement des projectiles! 🔥
+          </p>
+        )}
+        {selectedCharacter?.id === 'rogue' && (
+          <p style={{ margin: '5px 0', fontSize: '10px', opacity: 0.8 }}>
+            Le rodeur lance automatiquement des flèches! 🏹
+          </p>
+        )}
+        {selectedCharacter?.id === 'fallen_knight' && (
+          <p style={{ margin: '5px 0', fontSize: '10px', opacity: 0.8 }}>
+            Le templier frappe automatiquement avec sa lance! ⚔️
           </p>
         )}
         <p style={{ margin: '5px 0', fontSize: '10px', opacity: 0.8 }}>

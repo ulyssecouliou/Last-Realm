@@ -32,8 +32,44 @@ const PowerupSelector = ({ onSelect, onCancel, characterType = 'warrior' }) => {
           color: '#4ECDC4'
         }
       ];
+    } else if (characterType === 'rogue') {
+      return [
+        baseSpeedBoost,
+        {
+          id: 'arrow_speed',
+          name: 'Flèches Rapides',
+          description: '-25% Cooldown entre les flèches',
+          icon: '💨',
+          color: '#FF6B6B'
+        },
+        {
+          id: 'multi_arrows',
+          name: 'Multi-Flèches',
+          description: '+1 Flèche lancée simultanément',
+          icon: '🎯',
+          color: '#4ECDC4'
+        }
+      ];
+    } else if (characterType === 'fallen_knight') {
+      return [
+        baseSpeedBoost,
+        {
+          id: 'spear_speed',
+          name: 'Lance Rapide',
+          description: '-30% Cooldown entre les attaques',
+          icon: '⚔️',
+          color: '#FF6B6B'
+        },
+        {
+          id: 'spear_range',
+          name: 'Portée Augmentée',
+          description: '+50% Portée de la lance',
+          icon: '📏',
+          color: '#4ECDC4'
+        }
+      ];
     } else {
-      // Powerups pour les autres classes (guerrier, rodeur, etc.)
+      // Powerups pour les autres classes (guerrier, templier déchu)
       return [
         baseSpeedBoost,
         {
