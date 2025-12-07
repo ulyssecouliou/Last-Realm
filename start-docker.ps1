@@ -91,7 +91,7 @@ Write-Step "Construction des images Docker..."
 Write-Host "Cela peut prendre quelques minutes la premiere fois..." -ForegroundColor Yellow
 Write-Host ""
 
-$buildOutput = docker-compose build 2>&1
+$buildOutput = docker-compose build --no-cache 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-SuccessStep "Images Docker construites avec succes"
 } else {
