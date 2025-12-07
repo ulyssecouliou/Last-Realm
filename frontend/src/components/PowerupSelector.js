@@ -1,32 +1,60 @@
 import React, { useState } from 'react';
 import './PowerupSelector.css';
 
-const PowerupSelector = ({ onSelect, onCancel }) => {
+const PowerupSelector = ({ onSelect, onCancel, characterType = 'warrior' }) => {
   const [selectedPowerup, setSelectedPowerup] = useState(null);
 
-  const powerups = [
-    {
+  // Powerups différents selon le personnage
+  const getPowerups = () => {
+    const baseSpeedBoost = {
       id: 'speed_boost',
       name: 'Boost de Vitesse',
       description: '+50% Vitesse de déplacement',
       icon: '⚡',
       color: '#FFD700'
-    },
-    {
-      id: 'rotation_speed',
-      name: 'Épée Rapide',
-      description: '+100% Vitesse de rotation',
-      icon: '🌀',
-      color: '#FF6B6B'
-    },
-    {
-      id: 'size_boost',
-      name: 'Géant',
-      description: '+50% Taille du personnage',
-      icon: '📏',
-      color: '#4ECDC4'
+    };
+
+    if (characterType === 'wizard') {
+      return [
+        baseSpeedBoost,
+        {
+          id: 'fire_rate',
+          name: 'Tir Rapide',
+          description: '-30% Cooldown entre les projectiles',
+          icon: '🔥',
+          color: '#FF6B6B'
+        },
+        {
+          id: 'multi_projectiles',
+          name: 'Multi-Projectiles',
+          description: '+1 Projectile lancé simultanément',
+          icon: '💥',
+          color: '#4ECDC4'
+        }
+      ];
+    } else {
+      // Powerups pour les autres classes (guerrier, rodeur, etc.)
+      return [
+        baseSpeedBoost,
+        {
+          id: 'rotation_speed',
+          name: 'Épée Rapide',
+          description: '+100% Vitesse de rotation',
+          icon: '🌀',
+          color: '#FF6B6B'
+        },
+        {
+          id: 'size_boost',
+          name: 'Géant',
+          description: '+50% Taille du personnage',
+          icon: '📏',
+          color: '#4ECDC4'
+        }
+      ];
     }
-  ];
+  };
+
+  const powerups = getPowerups();
 
   const handleSelect = (powerupId) => {
     setSelectedPowerup(powerupId);
@@ -47,8 +75,7 @@ const PowerupSelector = ({ onSelect, onCancel }) => {
         <div className="powerup-grid">
           {powerups.map((powerup) => (
             <div
-              key={powerup.id}
-              className={`powerup-card ${selectedPowerup === powerup.id ? 'selected' : ''}`}
+              key={powerup.id}              className={`powerup-card ${selectedPowerup === powerup.id ? 'selected' : ''}`}
               onClick={() => handleSelect(powerup.id)}
               style={{
                 borderColor: selectedPowerup === powerup.id ? powerup.color : '#ddd',

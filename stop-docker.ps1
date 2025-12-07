@@ -1,26 +1,26 @@
 #!/usr/bin/env pwsh
-# Script d'arrêt de Last-Realm avec Docker
+# Script d'arret de Last-Realm avec Docker
 
 Write-Host "================================" -ForegroundColor Cyan
-Write-Host "  Last-Realm - Arrêt Docker" -ForegroundColor Cyan
+Write-Host "  Last-Realm - Arret Docker" -ForegroundColor Cyan
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Demander si on veut supprimer les volumes
-Write-Host "Voulez-vous supprimer les données (volumes) ? (O/N)" -ForegroundColor Yellow
-Write-Host "ATTENTION: Cela supprimera toutes les données de la base de données!" -ForegroundColor Red
+Write-Host "Voulez-vous supprimer les donnees (volumes) ? (O/N)" -ForegroundColor Yellow
+Write-Host "ATTENTION: Cela supprimera toutes les donnees de la base de donnees!" -ForegroundColor Red
 $response = Read-Host
 
 if ($response -match "^[OoYy]") {
-    Write-Host "Arrêt et suppression des volumes..." -ForegroundColor Yellow
+    Write-Host "Arret et suppression des volumes..." -ForegroundColor Yellow
     docker-compose down -v
-    Write-Host "✓ Containers et volumes supprimés" -ForegroundColor Green
+    Write-Host "OK Containers et volumes supprimes" -ForegroundColor Green
 } else {
-    Write-Host "Arrêt des containers (conservation des données)..." -ForegroundColor Yellow
+    Write-Host "Arret des containers (conservation des donnees)..." -ForegroundColor Yellow
     docker-compose down
-    Write-Host "✓ Containers arrêtés (données conservées)" -ForegroundColor Green
+    Write-Host "OK Containers arretes (donnees conservees)" -ForegroundColor Green
 }
 
 Write-Host ""
-Write-Host "Pour redémarrer: ./start-docker.ps1" -ForegroundColor Cyan
+Write-Host "Pour redemarrer: ./start-docker.ps1" -ForegroundColor Cyan
 Write-Host ""

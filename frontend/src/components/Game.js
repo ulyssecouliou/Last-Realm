@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as PIXI from 'pixi.js';
 import PowerupSelector from './PowerupSelector';
+import CharacterSelector from './CharacterSelector';
 
   // Classe Player avec système de vie
 class Player {
@@ -20,6 +21,10 @@ class Player {
     this.speedMultiplier = 1; // Multiplicateur de vitesse
     this.rotationSpeedMultiplier = 1; // Multiplicateur de vitesse de rotation
     this.sizeMultiplier = 1; // Multiplicateur de taille
+    // Système de progression
+    this.level = 1;
+    this.experience = 0;
+    this.experienceToNextLevel = 100;
   }
 
   update(keys, mapWidth, mapHeight) {
@@ -82,6 +87,17 @@ class Player {
       this.knockbackX = (dx / distance) * force;
       this.knockbackY = (dy / distance) * force;
     }
+  }
+
+  gainExperience(amount) {
+    this.experience += amount;
+    if (this.experience >= this.experienceToNextLevel) {
+      this.level += 1;
+      this.experience -= this.experienceToNextLevel;
+      this.experienceToNextLevel = Math.floor(this.experienceToNextLevel * 1.2); // Augmente de 20% chaque niveau
+      return true; // Retourne true si level up
+    }
+    return false;
   }
 }
 
@@ -251,6 +267,145 @@ class Powerup {
   }
 }
 
+// Classe Projectile (pour le magicien)
+class Projectile {
+  constructor(x, y, velocityX, velocityY) {
+    this.x = x;
+    this.y = y;
+    this.velocityX = velocityX;
+    this.velocityY = velocityY;
+    this.sprite = null;
+    this.isAlive = true;
+    this.damage = 1;
+    this.speed = 0.8; // Vitesse des projectiles
+    this.lifespan = 300; // Frames avant disparition (5 secondes à 60fps)
+    this.age = 0;
+  }
+
+  update(mapWidth = 2400, mapHeight = 2400) {
+    this.x += this.velocityX * this.speed;
+    this.y += this.velocityY * this.speed;
+    this.age++;
+
+    if (this.sprite) {
+      this.sprite.x = this.x;
+      this.sprite.y = this.y;
+    }
+
+    // Détruire le projectile après sa durée de vie
+    if (this.age > this.lifespan) {
+      this.destroy();
+    }
+
+    // Détruire le projectile s'il sort de la map
+    if (this.x < -50 || this.x > mapWidth + 50 || this.y < -50 || this.y > mapHeight + 50) {
+      this.destroy();
+    }
+  }
+
+  setSprite(sprite) {
+    this.sprite = sprite;
+    sprite.x = this.x;
+    sprite.y = this.y;
+  }
+
+  checkCollision(monster) {
+    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
+    return distance < 30; // Distance de collision
+  }
+
+  destroy() {
+    this.isAlive = false;
+    if (this.sprite && this.sprite.parent) {
+      this.sprite.parent.removeChild(this.sprite);
+    }
+  }
+}
+
+// Classe Wizard (Magicien)
+class Wizard extends Player {
+  constructor(x, y) {
+    super(x, y);
+    this.characterType = 'wizard';
+    this.speed = 0.5; // Légèrement plus rapide que le guerrier
+    this.lastProjectileTime = 0;
+    this.projectileCooldown = 250; // Millisecondes entre les projectiles
+    this.direction = { x: 0, y: -1 }; // Direction actuelle
+    this.maxProjectiles = 1; // Nombre max de projectiles lancés en même temps
+    this.projectilesInFlight = 0; // Nombre de projectiles actuellement en vol
+  }
+
+  canShoot(currentTime) {
+    return currentTime - this.lastProjectileTime > this.projectileCooldown;
+  }
+
+  shoot(currentTime) {
+    this.lastProjectileTime = currentTime;
+    
+    // Créer un projectile dans la direction du mouvement
+    const projectile = new Projectile(
+      this.x,
+      this.y,
+      this.direction.x,
+      this.direction.y
+    );
+    
+    return projectile;
+  }
+
+  updateDirection(keys) {
+    // Mettre à jour la direction en fonction des touches actives
+    let dirX = 0;
+    let dirY = 0;
+
+    if (keys.left) dirX = -1;
+    if (keys.right) dirX = 1;
+    if (keys.up) dirY = -1;
+    if (keys.down) dirY = 1;
+
+    // Normaliser la direction
+    if (dirX !== 0 || dirY !== 0) {
+      const length = Math.sqrt(dirX * dirX + dirY * dirY);
+      this.direction.x = dirX / length;
+      this.direction.y = dirY / length;
+    }
+  }
+
+  update(keys, mapWidth, mapHeight) {
+    // Mettre à jour la direction
+    this.updateDirection(keys);
+    
+    // Appeler la méthode update du parent
+    super.update(keys, mapWidth, mapHeight);
+  }
+}
+
+// Classe Rogue (Rodeur)
+class Rogue extends Player {
+  constructor(x, y) {
+    super(x, y);
+    this.characterType = 'rogue';
+    this.speed = 0.6; // Plus rapide
+  }
+}
+
+// Classe FallenKnight (Templier Déchu)
+class FallenKnight extends Player {
+  constructor(x, y) {
+    super(x, y);
+    this.characterType = 'fallen_knight';
+    this.speed = 0.4; // Même vitesse que le guerrier
+  }
+}
+
+// Classe Warrior (Guerrier) - pour cohérence
+class Warrior extends Player {
+  constructor(x, y) {
+    super(x, y);
+    this.characterType = 'warrior';
+  }
+}
+
 const Game = () => {
   const gameRef = useRef(null);
   const appRef = useRef(null);
@@ -259,11 +414,15 @@ const Game = () => {
   const monstersRef = useRef([]);
   const swordRef = useRef(null);
   const healthDisplayRef = useRef(null);
+  const levelDisplayRef = useRef(null);
   const cameraRef = useRef({ x: 0, y: 0 });
   const backgroundRef = useRef(null);
   const powerupsRef = useRef([]);
+  const projectilesRef = useRef([]);
   const [showPowerupSelector, setShowPowerupSelector] = useState(false);
   const [currentPowerup, setCurrentPowerup] = useState(null);
+  const [showCharacterSelector, setShowCharacterSelector] = useState(true);
+  const [selectedCharacter, setSelectedCharacter] = useState(null);
   const powerupSelectorTimeoutRef = useRef(null);
   const powerupCollisionDetectedRef = useRef(false);
   const gameWorldRef = useRef(null);
@@ -273,10 +432,36 @@ const Game = () => {
   const MAP_WIDTH = 2400; // 4x plus grande que 600x600
   const MAP_HEIGHT = 2400; // 4x plus grande que 600x600
 
+  // Handler pour la sélection du personnage
+  const handleCharacterSelect = (character) => {
+    console.log('Personnage sélectionné:', character.id);
+    setSelectedCharacter(character);
+    setShowCharacterSelector(false);
+  };
+
   useEffect(() => {
+    if (!selectedCharacter) return; // Ne pas initialiser le jeu sans personnage sélectionné
+
     console.log('🎮 Game component mounted - Initializing game');
     const initializeGame = async () => {
       try {
+        // Pré-charger tous les assets
+        try {
+          await PIXI.Assets.load([
+            '/—Pngtree—knight avatar soldier with shield_23256476.png',
+            '/magicien.png',
+            '/rodeur.png',
+            '/templier_dechu.png',
+            '/projectile.png',
+            '/epee.png',
+            '/monster.png.png',
+            '/—Pngtree—pixel art red heart vector_21298284.png'
+          ]);
+          console.log('✅ Tous les assets chargés');
+        } catch (error) {
+          console.log('⚠️ Certains assets n\'ont pas pu être chargés:', error);
+        }
+
         // Créer l'application PixiJS
         const app = new PIXI.Application();
         await app.init({
@@ -322,8 +507,23 @@ const Game = () => {
           backgroundRef.current = fallbackBg;
         }
 
-        // Créer le joueur au centre de la map
-        const player = new Player(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+        // Créer le joueur au centre de la map en fonction du personnage sélectionné
+        let player;
+        switch(selectedCharacter.id) {
+          case 'wizard':
+            player = new Wizard(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+            break;
+          case 'rogue':
+            player = new Rogue(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+            break;
+          case 'fallen_knight':
+            player = new FallenKnight(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+            break;
+          case 'warrior':
+          default:
+            player = new Warrior(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+            break;
+        }
         playerRef.current = player;
         
         // Initialiser la caméra centrée sur le joueur
@@ -376,18 +576,66 @@ const Game = () => {
 
         await createHealthDisplay();
         
+        // Créer l'affichage du niveau et de l'expérience
+        const createLevelDisplay = () => {
+          // Créer le texte de niveau (en haut à gauche)
+          const levelText = new PIXI.Text(`Niveau: ${player.level}`, {
+            fontFamily: 'Arial',
+            fontSize: 20,
+            fill: 0xd4af37,
+            stroke: 0x000000,
+            strokeThickness: 2
+          });
+          levelText.x = 20;
+          levelText.y = 20;
+          
+          // Créer le texte d'expérience (en haut à gauche, sous le niveau)
+          const expText = new PIXI.Text(`EXP: ${player.experience}/${player.experienceToNextLevel}`, {
+            fontFamily: 'Arial',
+            fontSize: 16,
+            fill: 0x88dd88,
+            stroke: 0x000000,
+            strokeThickness: 2
+          });
+          expText.x = 20;
+          expText.y = 45;
+          
+          uiContainer.addChild(levelText);
+          uiContainer.addChild(expText);
+          
+          levelDisplayRef.current = { levelText, expText };
+          console.log('Affichage niveau et expérience créé');
+        };
+        
+        createLevelDisplay();
+        
         // Ajouter le conteneur UI au stage (après le monde du jeu pour qu'il soit au-dessus)
         app.stage.addChild(uiContainer);
 
-        // Charger le sprite du joueur
+        // Charger le sprite du joueur en fonction du personnage sélectionné
         try {
-          const texture = await PIXI.Assets.load('/—Pngtree—knight avatar soldier with shield_23256476.png');
+          const characterImages = {
+            'warrior': '/—Pngtree—knight avatar soldier with shield_23256476.png',
+            'wizard': '/magicien.png',
+            'rogue': '/rodeur.png',
+            'fallen_knight': '/templier_dechu.png'
+          };
+          
+          const imageUrl = characterImages[selectedCharacter.id] || characterImages['warrior'];
+          const texture = await PIXI.Assets.load(imageUrl);
           const sprite = new PIXI.Sprite(texture);
           sprite.anchor.set(0.5);
-          sprite.scale.set(0.03); // Taille réduite pour correspondre aux monstres
+          
+          // Adapter la taille en fonction du personnage
+          let scale = 0.03;
+          if (selectedCharacter.id === 'wizard') scale = 0.15;
+          else if (selectedCharacter.id === 'rogue') scale = 0.12;
+          else if (selectedCharacter.id === 'fallen_knight') scale = 0.12;
+          
+          sprite.scale.set(scale);
           player.setSprite(sprite);
           gameWorld.addChild(sprite);
-          console.log('Sprite du joueur chargé');
+          console.log('Sprite du joueur chargé:', selectedCharacter.id, 'scale:', scale);
         } catch (error) {
           // Sprite de remplacement (taille normale)
           const fallbackSprite = new PIXI.Graphics();
@@ -399,29 +647,31 @@ const Game = () => {
           console.log('Sprite de remplacement créé');
         }
 
-        // Créer l'épée qui tourne autour du joueur
-        const sword = new Sword(player);
-        swordRef.current = sword;
+        // Créer l'épée SEULEMENT pour le guerrier (Warrior)
+        if (player instanceof Warrior) {
+          const sword = new Sword(player);
+          swordRef.current = sword;
 
-        // Charger le sprite de l'épée
-        try {
-          const swordTexture = await PIXI.Assets.load('/epee.png');
-          const swordSprite = new PIXI.Sprite(swordTexture);
-          swordSprite.anchor.set(0.5);
-          swordSprite.scale.set(0.5); // Taille de l'épée agrandie x10 (0.05 * 10 = 0.5)
-          sword.setSprite(swordSprite);
-          gameWorld.addChild(swordSprite);
-          console.log('Épée chargée');
-        } catch (error) {
-          console.log('Erreur chargement épée, création sprite de remplacement');
-          // Sprite de remplacement pour l'épée
-          const fallbackSword = new PIXI.Graphics();
-          fallbackSword.beginFill(0xC0C0C0); // Couleur argent
-          fallbackSword.drawRect(-20, -150, 40, 300); // Forme d'épée agrandie x10
-          fallbackSword.endFill();
-          sword.setSprite(fallbackSword);
-          gameWorld.addChild(fallbackSword);
-          console.log('Sprite de remplacement épée créé');
+          // Charger le sprite de l'épée
+          try {
+            const swordTexture = await PIXI.Assets.load('/epee.png');
+            const swordSprite = new PIXI.Sprite(swordTexture);
+            swordSprite.anchor.set(0.5);
+            swordSprite.scale.set(0.5); // Taille de l'épée agrandie x10 (0.05 * 10 = 0.5)
+            sword.setSprite(swordSprite);
+            gameWorld.addChild(swordSprite);
+            console.log('Épée chargée pour le guerrier');
+          } catch (error) {
+            console.log('Erreur chargement épée, création sprite de remplacement');
+            // Sprite de remplacement pour l'épée
+            const fallbackSword = new PIXI.Graphics();
+            fallbackSword.beginFill(0xC0C0C0); // Couleur argent
+            fallbackSword.drawRect(-20, -150, 40, 300); // Forme d'épée agrandie x10
+            fallbackSword.endFill();
+            sword.setSprite(fallbackSword);
+            gameWorld.addChild(fallbackSword);
+            console.log('Sprite de remplacement épée créé');
+          }
         }
 
         // Gestion des entrées
@@ -432,7 +682,6 @@ const Game = () => {
             case 'ArrowUp': keysRef.current.up = true; break;
             case 'ArrowDown': keysRef.current.down = true; break;
           }
-          event.preventDefault();
         };
 
         const handleKeyUp = (event) => {
@@ -442,7 +691,6 @@ const Game = () => {
             case 'ArrowUp': keysRef.current.up = false; break;
             case 'ArrowDown': keysRef.current.down = false; break;
           }
-          event.preventDefault();
         };
 
         // Ajouter les écouteurs
@@ -582,6 +830,14 @@ const Game = () => {
           }
         };
 
+        // Fonction pour mettre à jour l'affichage du niveau et de l'expérience
+        const updateLevelDisplay = () => {
+          if (levelDisplayRef.current && levelDisplayRef.current.levelText) {
+            levelDisplayRef.current.levelText.text = `Niveau: ${playerRef.current.level}`;
+            levelDisplayRef.current.expText.text = `EXP: ${playerRef.current.experience}/${playerRef.current.experienceToNextLevel}`;
+          }
+        };
+
         // Fonction pour mettre à jour la caméra
         const updateCamera = () => {
           if (playerRef.current) {
@@ -611,6 +867,40 @@ const Game = () => {
             if (swordRef.current) {
               swordRef.current.update();
             }
+
+            // Tirer automatiquement les projectiles pour le magicien (continu, sans besoin de Tab)
+            if (playerRef.current && (playerRef.current instanceof Wizard || playerRef.current.characterType === 'wizard')) {
+              const currentTime = Date.now();
+              if (playerRef.current.canShoot(currentTime)) {
+                const projectile = playerRef.current.shoot(currentTime);
+                
+                // Créer le sprite du projectile avec l'image
+                let projectileSprite;
+                try {
+                  const projectileTexture = PIXI.Assets.get('/projectile.png');
+                  projectileSprite = new PIXI.Sprite(projectileTexture);
+                  projectileSprite.scale.set(0.08);
+                } catch (error) {
+                  // Fallback: créer un cercle magenta si l'image ne charge pas
+                  projectileSprite = new PIXI.Graphics();
+                  projectileSprite.beginFill(0xFF00FF);
+                  projectileSprite.drawCircle(0, 0, 10);
+                  projectileSprite.endFill();
+                }
+                
+                projectile.setSprite(projectileSprite);
+                gameWorldRef.current.addChild(projectileSprite);
+                projectilesRef.current.push(projectile);
+                console.log('🔥 Projectile lancé! Direction:', projectile.velocityX.toFixed(2), projectile.velocityY.toFixed(2));
+              }
+            }
+
+            // Mettre à jour tous les projectiles
+            projectilesRef.current.forEach((projectile) => {
+              if (projectile.isAlive) {
+                projectile.update(MAP_WIDTH, MAP_HEIGHT);
+              }
+            });
             
             // Mettre à jour tous les powerups
             if (powerupsRef.current.length > 0) {
@@ -645,8 +935,31 @@ const Game = () => {
                   const isDead = monster.takeDamage(swordRef.current.damage);
                   if (isDead) {
                     console.log('Monstre tué par l\'épée!');
+                    // Gagner de l'expérience
+                    const levelUp = playerRef.current.gainExperience(25);
+                    updateLevelDisplay();
+                    if (levelUp) {
+                      console.log('🎉 LEVEL UP! Niveau:', playerRef.current.level);
+                    }
                   }
                 }
+
+                // Vérifier collision avec les projectiles (pour le magicien)
+                projectilesRef.current.forEach((projectile) => {
+                  if (projectile.isAlive && projectile.checkCollision(monster)) {
+                    const isDead = monster.takeDamage(projectile.damage);
+                    projectile.destroy();
+                    if (isDead) {
+                      console.log('Monstre tué par projectile!');
+                      // Gagner de l'expérience
+                      const levelUp = playerRef.current.gainExperience(25);
+                      updateLevelDisplay();
+                      if (levelUp) {
+                        console.log('🎉 LEVEL UP! Niveau:', playerRef.current.level);
+                      }
+                    }
+                  }
+                });
                 
                 // Vérifier collision avec le joueur (mais ne plus détruire le monstre)
                 if (monster.checkCollision(playerRef.current)) {
@@ -669,6 +982,9 @@ const Game = () => {
 
             // Nettoyer les monstres morts
             monstersRef.current = monstersRef.current.filter(monster => monster.isAlive);
+
+            // Nettoyer les projectiles morts
+            projectilesRef.current = projectilesRef.current.filter(projectile => projectile.isAlive);
           }
         };
 
@@ -705,7 +1021,7 @@ const Game = () => {
         cleanupFunction();
       }
     };
-  }, []);
+  }, [selectedCharacter]);
 
   // Handler pour la sélection de powerup
   const handlePowerupSelect = (powerupType) => {
@@ -713,15 +1029,26 @@ const Game = () => {
     
     if (!playerRef.current || !currentPowerup) return;
     
-    // Appliquer l'effet du powerup
+    // Appliquer l'effet du powerup en fonction du type de personnage
+    const isWizard = playerRef.current instanceof Wizard || playerRef.current.characterType === 'wizard';
+    
+    // Powerups universels
     switch(powerupType) {
       case 'speed_boost':
+      case 'speed_boost':
         playerRef.current.speedMultiplier *= 1.5; // +50% vitesse
-        console.log('Speed multiplier:', playerRef.current.speedMultiplier);
+        console.log('⚡ Speed boost! Multiplicateur:', playerRef.current.speedMultiplier);
         break;
       case 'rotation_speed':
-        playerRef.current.rotationSpeedMultiplier *= 2; // +100% vitesse rotation
-        console.log('Rotation speed multiplier:', playerRef.current.rotationSpeedMultiplier);
+        // Pour le guerrier/autres classes avec épée = épée plus rapide
+        if (!isWizard) {
+          playerRef.current.rotationSpeedMultiplier *= 2; // +100% vitesse rotation épée
+          console.log('🌀 Épée rapide! Multiplicateur:', playerRef.current.rotationSpeedMultiplier);
+        } else {
+          // Pour le magicien = plus de projectiles en même temps
+          playerRef.current.maxProjectiles = (playerRef.current.maxProjectiles || 1) + 1;
+          console.log('💥 Multi-projectiles! Max projectiles:', playerRef.current.maxProjectiles);
+        }
         break;
       case 'size_boost':
         playerRef.current.sizeMultiplier *= 1.5; // +50% taille
@@ -731,7 +1058,21 @@ const Game = () => {
             playerRef.current.sprite.scale.y * 1.5
           );
         }
-        console.log('Size multiplier:', playerRef.current.sizeMultiplier);
+        console.log('📏 Géant! Taille multiplicatrice:', playerRef.current.sizeMultiplier);
+        break;
+      case 'multi_projectiles':
+        // Powerup pour le magicien = plus de projectiles
+        if (isWizard) {
+          playerRef.current.maxProjectiles = (playerRef.current.maxProjectiles || 1) + 1;
+          console.log('💥 Multi-projectiles! Max projectiles:', playerRef.current.maxProjectiles);
+        }
+        break;
+      case 'fire_rate':
+        // Powerup spécifique au magicien = tirer plus vite
+        if (isWizard) {
+          playerRef.current.projectileCooldown = Math.max(100, playerRef.current.projectileCooldown * 0.7); // -30% cooldown
+          console.log('🔥 Tir rapide! Cooldown:', playerRef.current.projectileCooldown);
+        }
         break;
       default:
         console.warn('Type de powerup inconnu:', powerupType);
@@ -778,10 +1119,14 @@ const Game = () => {
       justifyContent: 'center',
       zIndex: 1000
     }}>
+      {showCharacterSelector && (
+        <CharacterSelector onSelect={handleCharacterSelect} />
+      )}
       {showPowerupSelector && (
         <PowerupSelector 
           onSelect={handlePowerupSelect}
           onCancel={handlePowerupCancel}
+          characterType={selectedCharacter?.id}
         />
       )}
       <div 
@@ -809,6 +1154,11 @@ const Game = () => {
         <p style={{ margin: '5px 0', fontSize: '12px' }}>
           <strong>Utilisez les flèches ↑↓←→ pour vous déplacer</strong>
         </p>
+        {selectedCharacter?.id === 'wizard' && (
+          <p style={{ margin: '5px 0', fontSize: '10px', opacity: 0.8 }}>
+            Le magicien lance automatiquement des projectiles! 🔥
+          </p>
+        )}
         <p style={{ margin: '5px 0', fontSize: '10px', opacity: 0.8 }}>
           Collectez les powerups (carrés colorés) pour obtenir des bonus!
         </p>

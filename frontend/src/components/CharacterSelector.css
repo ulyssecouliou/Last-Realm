@@ -1,0 +1,199 @@
+.character-selector-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.95) 0%, rgba(42, 42, 82, 0.95) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(5px);
+}
+
+.character-selector-modal {
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  border: 3px solid #d4af37;
+  border-radius: 15px;
+  padding: 40px;
+  max-width: 1200px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(212, 175, 55, 0.3);
+  animation: slideIn 0.4s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.selector-title {
+  color: #d4af37;
+  text-align: center;
+  font-size: 2.5rem;
+  margin: 0 0 10px 0;
+  text-shadow: 0 2px 10px rgba(212, 175, 55, 0.5);
+  font-family: 'Georgia', serif;
+}
+
+.selector-subtitle {
+  color: #cccccc;
+  text-align: center;
+  font-size: 1.1rem;
+  margin: 0 0 40px 0;
+  opacity: 0.9;
+}
+
+.characters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 25px;
+  margin-top: 30px;
+}
+
+.character-card {
+  background: linear-gradient(135deg, rgba(44, 24, 16, 0.6) 0%, rgba(66, 33, 66, 0.6) 100%);
+  border: 2px solid #555;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.character-card:hover {
+  border-color: #d4af37;
+  transform: translateY(-8px);
+  box-shadow: 0 15px 40px rgba(212, 175, 55, 0.3), inset 0 1px 0 rgba(212, 175, 55, 0.2);
+  background: linear-gradient(135deg, rgba(60, 35, 20, 0.8) 0%, rgba(80, 40, 80, 0.8) 100%);
+}
+
+.character-card.selected {
+  border-color: #d4af37;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(212, 175, 55, 0.05) 100%);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.4), inset 0 1px 0 rgba(212, 175, 55, 0.3);
+}
+
+.character-image-container {
+  width: 100%;
+  height: 200px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 15px;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.character-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 5px rgba(212, 175, 55, 0.3));
+}
+
+.character-info {
+  text-align: center;
+}
+
+.character-name {
+  color: #d4af37;
+  font-size: 1.5rem;
+  margin: 10px 0 8px 0;
+  font-family: 'Georgia', serif;
+}
+
+.character-description {
+  color: #bbbbbb;
+  font-size: 0.95rem;
+  margin: 8px 0;
+  line-height: 1.4;
+  min-height: 40px;
+}
+
+.character-stats {
+  color: #88dd88;
+  font-size: 0.85rem;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(212, 175, 55, 0.2);
+  font-weight: bold;
+}
+
+.selected-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #d4af37;
+  color: #1a1a2e;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.85rem;
+  animation: badgePopIn 0.3s ease;
+}
+
+@keyframes badgePopIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Scrollbar styling */
+.character-selector-modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.character-selector-modal::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 10px;
+}
+
+.character-selector-modal::-webkit-scrollbar-thumb {
+  background: #d4af37;
+  border-radius: 10px;
+}
+
+.character-selector-modal::-webkit-scrollbar-thumb:hover {
+  background: #e5c158;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .character-selector-modal {
+    padding: 20px;
+    border-width: 2px;
+  }
+
+  .selector-title {
+    font-size: 2rem;
+  }
+
+  .characters-grid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .character-card {
+    padding: 15px;
+  }
+
+  .character-image-container {
+    height: 150px;
+  }
+}
