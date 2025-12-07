@@ -19,6 +19,10 @@ export class Player {
     this.level = 1;
     this.experience = 0;
     this.experienceToNextLevel = 100;
+    // Système de brûlure
+    this.isBurning = false;
+    this.burnSource = null; // Référence au monstre épique qui brûle
+    this.burnDamageCounter = 0; // Compteur pour les dégâts (1 HP tous les 60 frames)
   }
 
   update(keys, mapWidth, mapHeight) {
@@ -94,5 +98,33 @@ export class Player {
       return true; // Retourne true si level up
     }
     return false;
+  }
+
+  applyBurn(epicMonster) {
+    this.isBurning = true;
+    this.burnSource = epicMonster;
+  }
+
+  removeBurn() {
+    this.isBurning = false;
+    this.burnSource = null;
+    this.burnDamageCounter = 0;
+  }
+
+  updateBurn() {
+    if (!this.isBurning || !this.burnSource) return;
+    
+    // Si le monstre est mort, arrêter la brûlure
+    if (this.burnSource.health <= 0) {
+      this.removeBurn();
+      return;
+    }
+
+    // Infliger 1 HP de dégâts tous les 60 frames (1 seconde à 60 FPS)
+    this.burnDamageCounter++;
+    if (this.burnDamageCounter >= 60) {
+      this.takeDamage(1);
+      this.burnDamageCounter = 0;
+    }
   }
 }

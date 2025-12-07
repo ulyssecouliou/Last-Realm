@@ -84,6 +84,16 @@ export class EpicMonster {
 
     // Mettre à jour la barre de vie
     this.updateHealthBar();
+
+    // Appliquer la brûlure si le joueur est à proximité
+    if (distance < this.attackRange && distance > 0) {
+      player.applyBurn(this);
+    } else {
+      // Retirer la brûlure si le joueur s'éloigne
+      if (player.isBurning && player.burnSource === this) {
+        player.removeBurn();
+      }
+    }
   }
 
   updateHealthBar() {

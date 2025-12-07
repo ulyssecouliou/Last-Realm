@@ -592,6 +592,20 @@ const Game = () => {
             // Mettre à jour le joueur avec les limites de la map
             playerRef.current.update(keysRef.current, MAP_WIDTH, MAP_HEIGHT);
             
+            // Mettre à jour l'effet de brûlure
+            playerRef.current.updateBurn();
+            
+            // Appliquer le clignotement rouge si brûlé
+            if (playerRef.current.sprite) {
+              if (playerRef.current.isBurning) {
+                // Clignoter rouge : alterner entre rouge et normal tous les 10 frames
+                const blink = Math.floor((playerRef.current.burnDamageCounter / 5) % 2) === 0;
+                playerRef.current.sprite.tint = blink ? 0xFF0000 : 0xFFFFFF; // Rouge ou blanc
+              } else {
+                playerRef.current.sprite.tint = 0xFFFFFF; // Couleur normale
+              }
+            }
+            
             // Mettre à jour l'épée
             if (swordRef.current) {
               swordRef.current.update();
