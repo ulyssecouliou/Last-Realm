@@ -3,883 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import * as PIXI from 'pixi.js';
 import PowerupSelector from './PowerupSelector';
 import CharacterSelector from './CharacterSelector';
-
-  // Classe Player avec système de vie
-class Player {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.speed = 0.4; // Vitesse réduite de 50% (0.8/2 = 0.4)
-    this.sprite = null;
-    this.health = 100; // 100 points de vie
-    this.maxHealth = 100;
-    // Système de recul
-    this.knockbackX = 0;
-    this.knockbackY = 0;
-    this.knockbackDecay = 0.9; // Facteur de réduction du recul
-    // Système de powerups
-    this.speedMultiplier = 1; // Multiplicateur de vitesse
-    this.rotationSpeedMultiplier = 1; // Multiplicateur de vitesse de rotation
-    this.sizeMultiplier = 1; // Multiplicateur de taille
-    // Système de progression
-    this.level = 1;
-    this.experience = 0;
-    this.experienceToNextLevel = 100;
-  }
-
-  update(keys, mapWidth, mapHeight) {
-    // Sauvegarder l'ancienne position pour détecter le mouvement
-    const oldX = this.x;
-    const oldY = this.y;
-    
-    // Déplacement avec limites de la map zoom x4 (avec multiplicateur de vitesse)
-    if (keys.left && this.x > 50) this.x -= this.speed * this.speedMultiplier;
-    if (keys.right && this.x < mapWidth - 50) this.x += this.speed * this.speedMultiplier;
-    if (keys.up && this.y > 50) this.y -= this.speed * this.speedMultiplier;
-    if (keys.down && this.y < mapHeight - 50) this.y += this.speed * this.speedMultiplier;    // Appliquer le recul (knockback)
-    this.x += this.knockbackX;
-    this.y += this.knockbackY;
-    
-    // Réduire progressivement le recul (effet smooth)
-    this.knockbackX *= this.knockbackDecay;
-    this.knockbackY *= this.knockbackDecay;
-    
-    // Arrêter le recul quand il devient très petit
-    if (Math.abs(this.knockbackX) < 0.01) this.knockbackX = 0;
-    if (Math.abs(this.knockbackY) < 0.01) this.knockbackY = 0;
-
-    // Vérifier les limites de la map après le recul
-    this.x = Math.max(50, Math.min(mapWidth - 50, this.x));
-    this.y = Math.max(50, Math.min(mapHeight - 50, this.y));
-
-    // Mettre à jour le sprite immédiatement (position absolue)
-    if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-    }
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  takeDamage(damage, attackerX = null, attackerY = null) {
-    this.health = Math.max(0, this.health - damage);
-    
-    // Appliquer un recul si on connaît la position de l'attaquant
-    if (attackerX !== null && attackerY !== null) {
-      this.applyKnockback(attackerX, attackerY);
-    }
-    
-    return this.health <= 0; // Retourne true si mort
-  }
-
-  applyKnockback(attackerX, attackerY, force = 8) {
-    // Calculer la direction du recul (opposée à l'attaquant)
-    const dx = this.x - attackerX;
-    const dy = this.y - attackerY;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    
-    // Normaliser et appliquer la force
-    if (distance > 0) {
-      this.knockbackX = (dx / distance) * force;
-      this.knockbackY = (dy / distance) * force;
-    }
-  }
-
-  gainExperience(amount) {
-    this.experience += amount;
-    if (this.experience >= this.experienceToNextLevel) {
-      this.level += 1;
-      this.experience -= this.experienceToNextLevel;
-      this.experienceToNextLevel = Math.floor(this.experienceToNextLevel * 1.2); // Augmente de 20% chaque niveau
-      return true; // Retourne true si level up
-    }
-    return false;
-  }
-}
-
-// Classe Monster
-class Monster {
-  constructor(x, y, targetPlayer) {
-    this.x = x;
-    this.y = y;
-    this.speed = 0.3; // Vitesse divisée par 2 (0.6/2 = 0.3)
-    this.sprite = null;
-    this.targetPlayer = targetPlayer;
-    this.isAlive = true;
-    this.health = 3; // Points de vie des monstres
-    this.maxHealth = 3;
-  }
-
-  update(otherMonsters = []) {
-    if (!this.isAlive || !this.targetPlayer) return;
-
-    // Calculer la direction vers le joueur
-    const dx = this.targetPlayer.x - this.x;
-    const dy = this.targetPlayer.y - this.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance > 0) {
-      // Calculer la nouvelle position
-      let newX = this.x + (dx / distance) * this.speed;
-      let newY = this.y + (dy / distance) * this.speed;
-
-      // Vérifier les collisions avec les autres monstres
-      let collision = false;
-      for (let other of otherMonsters) {
-        if (other !== this && other.isAlive) {
-          const otherDx = newX - other.x;
-          const otherDy = newY - other.y;
-          const otherDistance = Math.sqrt(otherDx * otherDx + otherDy * otherDy);
-          
-          // Distance minimale entre monstres (rayon de collision)
-          if (otherDistance < 25) {
-            collision = true;
-            break;
-          }
-        }
-      }
-
-      // Appliquer le mouvement seulement s'il n'y a pas de collision
-      if (!collision) {
-        this.x = newX;
-        this.y = newY;
-      }
-    }
-
-    // Mettre à jour le sprite
-    if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-    }
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  // Vérifier collision avec le joueur
-  checkCollision(player) {
-    const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
-    return distance < 20; // Distance de collision
-  }
-
-  takeDamage(damage) {
-    this.health = Math.max(0, this.health - damage);
-    if (this.health <= 0) {
-      this.destroy();
-      return true; // Monstre mort
-    }
-    return false; // Monstre encore vivant
-  }
-
-  destroy() {
-    this.isAlive = false;
-    if (this.sprite && this.sprite.parent) {
-      this.sprite.parent.removeChild(this.sprite);
-    }
-  }
-}
-
-// Classe Fireball (boule de feu du monstre épique)
-class Fireball {
-  constructor(x, y, targetX, targetY) {
-    this.x = x;
-    this.y = y;
-    this.speed = 0.6;
-    
-    // Calculer la direction vers la cible
-    const dx = targetX - x;
-    const dy = targetY - y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    
-    this.velocityX = (dx / distance) * this.speed;
-    this.velocityY = (dy / distance) * this.speed;
-    
-    this.sprite = null;
-    this.hitbox = null;
-    this.isAlive = true;
-    this.lifespan = 400; // Durée de vie en frames
-    this.age = 0;
-    this.damage = 3; // Dégâts élevés
-  }
-
-  update(mapWidth = 2400, mapHeight = 2400) {
-    this.x += this.velocityX;
-    this.y += this.velocityY;
-    this.age++;
-
-    // Détruire la boule de feu après sa durée de vie
-    if (this.age > this.lifespan) {
-      this.destroy();
-    }
-
-    // Détruire si sort de la map
-    if (this.x < -50 || this.x > mapWidth + 50 || this.y < -50 || this.y > mapHeight + 50) {
-      this.destroy();
-    }
-
-    if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-      // Rotation pour effet visuel
-      this.sprite.rotation += 0.1;
-    }
-
-    // Mettre à jour la hitbox
-    if (this.hitbox) {
-      this.hitbox.x = this.x;
-      this.hitbox.y = this.y;
-    }
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  setHitbox(hitbox) {
-    this.hitbox = hitbox;
-    hitbox.x = this.x;
-    hitbox.y = this.y;
-  }
-
-  checkCollision(player) {
-    const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
-    return distance < 30;
-  }
-
-  destroy() {
-    this.isAlive = false;
-    if (this.sprite && this.sprite.parent) {
-      this.sprite.parent.removeChild(this.sprite);
-    }
-    if (this.hitbox && this.hitbox.parent) {
-      this.hitbox.parent.removeChild(this.hitbox);
-    }
-  }
-}
-
-// Classe EpicMonster (monstre épique avec attaques à distance)
-class EpicMonster {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.speed = 0.25; // Plus lent que les monstres normaux
-    this.sprite = null;
-    this.healthBar = null;
-    this.healthBarBackground = null;
-    this.health = 10; // Plus résistant
-    this.maxHealth = 10;
-    this.isAlive = true;
-    this.lastFireballTime = 0;
-    this.fireballCooldown = 2000; // Tire toutes les 2 secondes
-    this.attackRange = 300; // Distance d'attaque
-    this.minDistance = 150; // Distance minimale à maintenir
-  }
-
-  update(player, otherMonsters = []) {
-    if (!player) return;
-
-    const dx = player.x - this.x;
-    const dy = player.y - this.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    // Comportement : maintenir une distance et tirer
-    if (distance > this.attackRange) {
-      // Trop loin, se rapprocher
-      const newX = this.x + (dx / distance) * this.speed;
-      const newY = this.y + (dy / distance) * this.speed;
-
-      // Vérifier les collisions avec les autres monstres
-      let collision = false;
-      for (let other of otherMonsters) {
-        if (other !== this && other.isAlive) {
-          const otherDx = newX - other.x;
-          const otherDy = newY - other.y;
-          const otherDistance = Math.sqrt(otherDx * otherDx + otherDy * otherDy);
-          
-          if (otherDistance < 40) {
-            collision = true;
-            break;
-          }
-        }
-      }
-
-      if (!collision) {
-        this.x = newX;
-        this.y = newY;
-      }
-    } else if (distance < this.minDistance) {
-      // Trop proche, reculer
-      const newX = this.x - (dx / distance) * this.speed;
-      const newY = this.y - (dy / distance) * this.speed;
-
-      let collision = false;
-      for (let other of otherMonsters) {
-        if (other !== this && other.isAlive) {
-          const otherDx = newX - other.x;
-          const otherDy = newY - other.y;
-          const otherDistance = Math.sqrt(otherDx * otherDx + otherDy * otherDy);
-          
-          if (otherDistance < 40) {
-            collision = true;
-            break;
-          }
-        }
-      }
-
-      if (!collision) {
-        this.x = newX;
-        this.y = newY;
-      }
-    }
-    // Sinon reste à distance optimale
-
-    // Mettre à jour le sprite
-    if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-    }
-
-    // Mettre à jour la barre de vie
-    this.updateHealthBar();
-  }
-
-  updateHealthBar() {
-    if (this.healthBarBackground && this.healthBar) {
-      // Positionner au-dessus du monstre
-      this.healthBarBackground.x = this.x - 40;
-      this.healthBarBackground.y = this.y - 50;
-      this.healthBar.x = this.x - 40;
-      this.healthBar.y = this.y - 50;
-
-      // Mettre à jour la largeur de la barre
-      const healthPercent = Math.max(0, this.health / this.maxHealth);
-      this.healthBar.clear();
-      this.healthBar.beginFill(0x00FF00);
-      this.healthBar.drawRect(0, 0, 80 * healthPercent, 8);
-      this.healthBar.endFill();
-    }
-  }
-
-  canShoot(currentTime) {
-    return currentTime - this.lastFireballTime > this.fireballCooldown;
-  }
-
-  shoot(currentTime, targetX, targetY) {
-    this.lastFireballTime = currentTime;
-    return new Fireball(this.x, this.y, targetX, targetY);
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  setHealthBar(background, bar) {
-    this.healthBarBackground = background;
-    this.healthBar = bar;
-  }
-
-  checkCollision(player) {
-    const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
-    return distance < 30;
-  }
-
-  takeDamage(damage) {
-    this.health = Math.max(0, this.health - damage);
-    console.log(`💔 Monstre épique blessé! HP: ${this.health}/${this.maxHealth}`);
-    if (this.health <= 0) {
-      this.destroy();
-      return true;
-    }
-    return false;
-  }
-
-  destroy() {
-    this.isAlive = false;
-    if (this.sprite && this.sprite.parent) {
-      this.sprite.parent.removeChild(this.sprite);
-    }
-    if (this.healthBarBackground && this.healthBarBackground.parent) {
-      this.healthBarBackground.parent.removeChild(this.healthBarBackground);
-    }
-    if (this.healthBar && this.healthBar.parent) {
-      this.healthBar.parent.removeChild(this.healthBar);
-    }
-  }
-}
-
-// Classe Sword (épée qui tourne autour du joueur)
-class Sword {
-  constructor(player, radius = 120) {
-    this.player = player;
-    this.radius = radius; // Distance du joueur (éloignée de 80 à 120)
-    this.angle = 0; // Angle de rotation
-    this.rotationSpeed = 0.005; // Vitesse de rotation réduite par 10 (0.05/10 = 0.005)
-    this.sprite = null;
-    this.damage = 1; // Dégâts infligés
-  }
-
-  update() {
-    if (!this.player) return;
-    
-    // Faire tourner l'épée (utiliser le rotationSpeedMultiplier du joueur s'il existe)
-    const speedMultiplier = this.player.rotationSpeedMultiplier || 1;
-    this.angle += this.rotationSpeed * speedMultiplier;
-    
-    // Calculer la position autour du joueur
-    this.x = this.player.x + Math.cos(this.angle) * this.radius;
-    this.y = this.player.y + Math.sin(this.angle) * this.radius;
-    
-    // Mettre à jour le sprite
-    if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-      this.sprite.rotation = this.angle + Math.PI / 2; // Orienter l'épée
-    }
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  // Vérifier collision avec un monstre
-  checkCollision(monster) {
-    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
-    return distance < 30; // Distance de collision de l'épée
-  }
-}
-
-// Classe Spear (lance qui fait des coups devant le joueur)
-class Spear {
-  constructor(player) {
-    this.player = player;
-    this.sprite = null;
-    this.hitbox = null;
-    this.damage = 1;
-    this.attackCooldown = 500; // Millisecondes entre les attaques
-    this.lastAttackTime = 0;
-    this.isAttacking = false;
-    this.attackDuration = 200; // Durée de l'animation d'attaque en ms
-    this.attackStartTime = 0;
-    this.baseDistance = 80; // Distance de base devant le joueur
-    this.attackDistance = 140; // Distance pendant l'attaque
-    this.currentDistance = this.baseDistance;
-    this.hasHit = false; // Pour éviter de frapper plusieurs fois pendant une attaque
-  }
-
-  update() {
-    if (!this.player) return;
-
-    const currentTime = Date.now();
-
-    // Gérer l'animation d'attaque
-    if (this.isAttacking) {
-      const attackProgress = (currentTime - this.attackStartTime) / this.attackDuration;
-      if (attackProgress >= 1) {
-        // Fin de l'attaque
-        this.isAttacking = false;
-        this.currentDistance = this.baseDistance;
-      } else {
-        // Animation d'extension de la lance (ease-out)
-        const easeOut = 1 - Math.pow(1 - attackProgress, 3);
-        this.currentDistance = this.baseDistance + (this.attackDistance - this.baseDistance) * easeOut;
-      }
-    }
-
-    // Attaque automatique si cooldown est écoulé
-    if (!this.isAttacking && currentTime - this.lastAttackTime > this.attackCooldown) {
-      this.attack(currentTime);
-    }
-
-    // Calculer la position devant le joueur dans la direction du mouvement
-    const direction = this.player.direction || { x: 0, y: -1 };
-    this.x = this.player.x + direction.x * this.currentDistance;
-    this.y = this.player.y + direction.y * this.currentDistance;
-
-    // Mettre à jour le sprite
-    if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-      // Orienter la lance dans la direction du joueur
-      // Ajouter π/2 car l'image pointe à droite par défaut (anchor 0, 0.5)
-      this.sprite.rotation = Math.atan2(direction.y, direction.x) + Math.PI / 2;
-    }
-
-    // Mettre à jour la hitbox
-    if (this.hitbox) {
-      this.hitbox.x = this.x;
-      this.hitbox.y = this.y;
-    }
-  }
-
-  attack(currentTime) {
-    this.isAttacking = true;
-    this.lastAttackTime = currentTime;
-    this.attackStartTime = currentTime;
-    this.hasHit = false; // Réinitialiser le flag à chaque nouvelle attaque
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  setHitbox(hitbox) {
-    this.hitbox = hitbox;
-    hitbox.x = this.x;
-    hitbox.y = this.y;
-  }
-
-  // Vérifier collision avec un monstre (seulement pendant l'attaque)
-  checkCollision(monster) {
-    if (!this.isAttacking || this.hasHit) return false;
-    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
-    if (distance < 60) { // Augmenté pour correspondre au sprite entier
-      this.hasHit = true;
-      return true;
-    }
-    return false;
-  }
-}
-
-// Classe Powerup
-// Classe Powerup
-class Powerup {
-  constructor(x, y, type) {
-    this.x = x;
-    this.y = y;
-    this.type = type;
-    this.sprite = null;
-    this.isAlive = true;
-    this.rotation = 0;
-    this.rotationSpeed = 0.05;
-  }
-
-  update() {
-    if (!this.sprite) return;
-    this.rotation += this.rotationSpeed;
-    this.sprite.rotation = this.rotation;
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  checkCollision(player) {
-    const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
-    return distance < 50;
-  }
-
-  destroy() {
-    this.isAlive = false;
-    if (this.sprite && this.sprite.parent) {
-      this.sprite.parent.removeChild(this.sprite);
-    }
-  }
-}
-
-// Classe Arrow (pour le rodeur)
-class Arrow {
-  constructor(x, y, dirX, dirY) {
-    this.x = x;
-    this.y = y;
-    this.speed = 0.8;
-    this.velocityX = dirX * this.speed;
-    this.velocityY = dirY * this.speed;
-    this.sprite = null;
-    this.hitbox = null;
-    this.isAlive = true;
-    this.lifespan = 300; // Durée de vie en frames
-    this.age = 0;
-    this.direction = { x: dirX, y: dirY };
-  }
-
-  update(mapWidth = 2400, mapHeight = 2400) {
-    this.x += this.velocityX;
-    this.y += this.velocityY;
-    this.age++;
-
-    // Détruire la flèche après sa durée de vie
-    if (this.age > this.lifespan) {
-      this.destroy();
-    }
-
-    // Détruire la flèche s'elle sort de la map
-    if (this.x < -50 || this.x > mapWidth + 50 || this.y < -50 || this.y > mapHeight + 50) {
-      this.destroy();
-    }
-
-    if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-      // Orienter la flèche dans la direction de tir
-      this.sprite.rotation = Math.atan2(this.velocityY, this.velocityX);
-    }
-
-    // Mettre à jour la hitbox
-    if (this.hitbox) {
-      this.hitbox.x = this.x;
-      this.hitbox.y = this.y;
-    }
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  setHitbox(hitbox) {
-    this.hitbox = hitbox;
-    hitbox.x = this.x;
-    hitbox.y = this.y;
-  }
-
-  checkCollision(monster) {
-    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
-    return distance < 45; // Augmenté pour correspondre au sprite entier
-  }
-
-  destroy() {
-    this.isAlive = false;
-    if (this.sprite && this.sprite.parent) {
-      this.sprite.parent.removeChild(this.sprite);
-    }
-    if (this.hitbox && this.hitbox.parent) {
-      this.hitbox.parent.removeChild(this.hitbox);
-    }
-  }
-}
-
-// Classe Projectile (pour le magicien)
-class Projectile {
-  constructor(x, y, velocityX, velocityY) {
-    this.x = x;
-    this.y = y;
-    this.velocityX = velocityX;
-    this.velocityY = velocityY;
-    this.sprite = null;
-    this.isAlive = true;
-    this.damage = 1;
-    this.speed = 0.8; // Vitesse des projectiles
-    this.lifespan = 300; // Frames avant disparition (5 secondes à 60fps)
-    this.age = 0;
-  }
-
-  update(mapWidth = 2400, mapHeight = 2400) {
-    this.x += this.velocityX * this.speed;
-    this.y += this.velocityY * this.speed;
-    this.age++;
-
-    if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-    }
-
-    // Détruire le projectile après sa durée de vie
-    if (this.age > this.lifespan) {
-      this.destroy();
-    }
-
-    // Détruire le projectile s'il sort de la map
-    if (this.x < -50 || this.x > mapWidth + 50 || this.y < -50 || this.y > mapHeight + 50) {
-      this.destroy();
-    }
-  }
-
-  setSprite(sprite) {
-    this.sprite = sprite;
-    sprite.x = this.x;
-    sprite.y = this.y;
-  }
-
-  checkCollision(monster) {
-    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
-    return distance < 30; // Distance de collision
-  }
-
-  destroy() {
-    this.isAlive = false;
-    if (this.sprite && this.sprite.parent) {
-      this.sprite.parent.removeChild(this.sprite);
-    }
-  }
-}
-
-// Classe Wizard (Magicien)
-class Wizard extends Player {
-  constructor(x, y) {
-    super(x, y);
-    this.characterType = 'wizard';
-    this.speed = 0.5; // Légèrement plus rapide que le guerrier
-    this.lastProjectileTime = 0;
-    this.projectileCooldown = 250; // Millisecondes entre les projectiles
-    this.direction = { x: 0, y: -1 }; // Direction actuelle
-    this.maxProjectiles = 1; // Nombre max de projectiles lancés en même temps
-    this.projectilesInFlight = 0; // Nombre de projectiles actuellement en vol
-  }
-
-  canShoot(currentTime) {
-    return currentTime - this.lastProjectileTime > this.projectileCooldown;
-  }
-
-  shoot(currentTime) {
-    this.lastProjectileTime = currentTime;
-    
-    // Créer un projectile dans la direction du mouvement
-    const projectile = new Projectile(
-      this.x,
-      this.y,
-      this.direction.x,
-      this.direction.y
-    );
-    
-    return projectile;
-  }
-
-  updateDirection(keys) {
-    // Mettre à jour la direction en fonction des touches actives
-    let dirX = 0;
-    let dirY = 0;
-
-    if (keys.left) dirX = -1;
-    if (keys.right) dirX = 1;
-    if (keys.up) dirY = -1;
-    if (keys.down) dirY = 1;
-
-    // Normaliser la direction
-    if (dirX !== 0 || dirY !== 0) {
-      const length = Math.sqrt(dirX * dirX + dirY * dirY);
-      this.direction.x = dirX / length;
-      this.direction.y = dirY / length;
-    }
-  }
-
-  update(keys, mapWidth, mapHeight) {
-    // Mettre à jour la direction
-    this.updateDirection(keys);
-    
-    // Appeler la méthode update du parent
-    super.update(keys, mapWidth, mapHeight);
-  }
-}
-
-// Classe Rogue (Rodeur)
-class Rogue extends Player {
-  constructor(x, y) {
-    super(x, y);
-    this.characterType = 'rogue';
-    this.speed = 0.6; // Plus rapide
-    this.lastArrowTime = 0;
-    this.arrowCooldown = 300; // Légèrement plus lent que le wizard
-    this.direction = { x: 0, y: -1 }; // Direction actuelle
-    this.maxArrows = 2; // Nombre max de flèches lancées en même temps
-    this.arrowsInFlight = 0; // Nombre de flèches actuellement en vol
-  }
-
-  canShoot(currentTime) {
-    return currentTime - this.lastArrowTime > this.arrowCooldown;
-  }
-
-  shoot(currentTime) {
-    this.lastArrowTime = currentTime;
-    
-    // Créer une flèche dans la direction du mouvement
-    const arrow = new Arrow(
-      this.x,
-      this.y,
-      this.direction.x,
-      this.direction.y
-    );
-    
-    return arrow;
-  }
-
-  updateDirection(keys) {
-    // Mettre à jour la direction en fonction des touches actives
-    let dirX = 0;
-    let dirY = 0;
-
-    if (keys.left) dirX = -1;
-    if (keys.right) dirX = 1;
-    if (keys.up) dirY = -1;
-    if (keys.down) dirY = 1;
-
-    // Normaliser la direction
-    if (dirX !== 0 || dirY !== 0) {
-      const length = Math.sqrt(dirX * dirX + dirY * dirY);
-      this.direction.x = dirX / length;
-      this.direction.y = dirY / length;
-    }
-  }
-
-  update(keys, mapWidth, mapHeight) {
-    // Mettre à jour la direction
-    this.updateDirection(keys);
-    
-    // Appeler la méthode update du parent
-    super.update(keys, mapWidth, mapHeight);
-  }
-}
-
-// Classe FallenKnight (Templier Déchu)
-class FallenKnight extends Player {
-  constructor(x, y) {
-    super(x, y);
-    this.characterType = 'fallen_knight';
-    this.speed = 0.4; // Même vitesse que le guerrier
-    this.direction = { x: 0, y: -1 }; // Direction actuelle pour la lance
-  }
-
-  updateDirection(keys) {
-    // Mettre à jour la direction en fonction des touches actives
-    let dirX = 0;
-    let dirY = 0;
-
-    if (keys.left) dirX = -1;
-    if (keys.right) dirX = 1;
-    if (keys.up) dirY = -1;
-    if (keys.down) dirY = 1;
-
-    // Normaliser la direction
-    if (dirX !== 0 || dirY !== 0) {
-      const length = Math.sqrt(dirX * dirX + dirY * dirY);
-      this.direction.x = dirX / length;
-      this.direction.y = dirY / length;
-    }
-  }
-
-  update(keys, mapWidth, mapHeight) {
-    // Mettre à jour la direction
-    this.updateDirection(keys);
-    
-    // Appeler la méthode update du parent
-    super.update(keys, mapWidth, mapHeight);
-  }
-}
-
-// Classe Warrior (Guerrier) - pour cohérence
-class Warrior extends Player {
-  constructor(x, y) {
-    super(x, y);
-    this.characterType = 'warrior';
-  }
-}
+import {
+  Warrior,
+  Wizard,
+  Rogue,
+  FallenKnight,
+  Monster,
+  EpicMonster,
+  Fireball,
+  Sword,
+  Spear,
+  Arrow,
+  Projectile,
+  Powerup,
+  MAP_WIDTH,
+  MAP_HEIGHT
+} from './gameClasses';
 
 const Game = () => {
   const gameRef = useRef(null);
@@ -906,10 +45,6 @@ const Game = () => {
   const powerupCollisionDetectedRef = useRef(false);
   const gameWorldRef = useRef(null);
   const navigate = useNavigate();
-
-  // Constantes de la map (zoom x4 de la taille de base)
-  const MAP_WIDTH = 2400; // 4x plus grande que 600x600
-  const MAP_HEIGHT = 2400; // 4x plus grande que 600x600
 
   // Handler pour la sélection du personnage
   const handleCharacterSelect = (character) => {
@@ -1549,10 +684,7 @@ const Game = () => {
             });
             
             // Mettre à jour tous les powerups
-            if (powerupsRef.current.length > 0) {
-              console.log('Vérification collision avec', powerupsRef.current.length, 'powerups');
-            }
-            powerupsRef.current.forEach((powerup, idx) => {
+            powerupsRef.current.forEach((powerup) => {
               if (powerup.isAlive) {
                 powerup.update();
                 
@@ -1571,7 +703,7 @@ const Game = () => {
             updateCamera();
 
             // Mettre à jour tous les monstres (avec évitement de superposition)
-            monstersRef.current.forEach((monster, index) => {
+            monstersRef.current.forEach((monster) => {
               if (monster.isAlive) {
                 // Passer la liste de tous les monstres pour éviter les superpositions
                 monster.update(monstersRef.current);
@@ -1644,17 +776,13 @@ const Game = () => {
                   }
                 });
                 
-                // Vérifier collision avec le joueur (mais ne plus détruire le monstre)
+                // Vérifier collision avec le joueur
                 if (monster.checkCollision(playerRef.current)) {
-                  // Le joueur prend des dégâts avec recul
                   const isDead = playerRef.current.takeDamage(1, monster.x, monster.y);
                   updateHealthDisplay();
                   
-                  // Ne plus détruire le monstre au contact du joueur
-                  
                   if (isDead) {
                     console.log('Game Over!');
-                    // TODO: Ajouter écran de game over
                   }
                 }
               }
@@ -1702,7 +830,7 @@ const Game = () => {
                   const isDead = epicMonster.takeDamage(swordRef.current.damage);
                   if (isDead) {
                     console.log('👹 Monstre épique tué par l\'épée!');
-                    playerRef.current.gainExperience(100); // Plus d'XP
+                    playerRef.current.gainExperience(100);
                     updateLevelDisplay();
                   }
                 }
@@ -1744,7 +872,7 @@ const Game = () => {
 
                 // Vérifier collision corps à corps avec le joueur
                 if (epicMonster.checkCollision(playerRef.current)) {
-                  const isDead = playerRef.current.takeDamage(2, epicMonster.x, epicMonster.y); // Plus de dégâts
+                  const isDead = playerRef.current.takeDamage(2, epicMonster.x, epicMonster.y);
                   updateHealthDisplay();
                   if (isDead) {
                     console.log('💀 Game Over!');
@@ -1826,30 +954,25 @@ const Game = () => {
     
     if (!playerRef.current || !currentPowerup) return;
     
-    // Appliquer l'effet du powerup en fonction du type de personnage
     const isWizard = playerRef.current instanceof Wizard || playerRef.current.characterType === 'wizard';
     const isRogue = playerRef.current instanceof Rogue || playerRef.current.characterType === 'rogue';
     
-    // Powerups universels
     switch(powerupType) {
       case 'speed_boost':
-      case 'speed_boost':
-        playerRef.current.speedMultiplier *= 1.5; // +50% vitesse
+        playerRef.current.speedMultiplier *= 1.5;
         console.log('⚡ Speed boost! Multiplicateur:', playerRef.current.speedMultiplier);
         break;
       case 'rotation_speed':
-        // Pour le guerrier/autres classes avec épée = épée plus rapide
         if (!isWizard && !isRogue) {
-          playerRef.current.rotationSpeedMultiplier *= 2; // +100% vitesse rotation épée
+          playerRef.current.rotationSpeedMultiplier *= 2;
           console.log('🌀 Épée rapide! Multiplicateur:', playerRef.current.rotationSpeedMultiplier);
         } else if (isWizard) {
-          // Pour le magicien = plus de projectiles en même temps
           playerRef.current.maxProjectiles = (playerRef.current.maxProjectiles || 1) + 1;
           console.log('💥 Multi-projectiles! Max projectiles:', playerRef.current.maxProjectiles);
         }
         break;
       case 'size_boost':
-        playerRef.current.sizeMultiplier *= 1.5; // +50% taille
+        playerRef.current.sizeMultiplier *= 1.5;
         if (playerRef.current.sprite) {
           playerRef.current.sprite.scale.set(
             playerRef.current.sprite.scale.x * 1.5,
@@ -1859,45 +982,39 @@ const Game = () => {
         console.log('📏 Géant! Taille multiplicatrice:', playerRef.current.sizeMultiplier);
         break;
       case 'multi_projectiles':
-        // Powerup pour le magicien = plus de projectiles
         if (isWizard) {
           playerRef.current.maxProjectiles = (playerRef.current.maxProjectiles || 1) + 1;
           console.log('💥 Multi-projectiles! Max projectiles:', playerRef.current.maxProjectiles);
         }
         break;
       case 'fire_rate':
-        // Powerup spécifique au magicien = tirer plus vite
         if (isWizard) {
-          playerRef.current.projectileCooldown = Math.max(100, playerRef.current.projectileCooldown * 0.7); // -30% cooldown
+          playerRef.current.projectileCooldown = Math.max(100, playerRef.current.projectileCooldown * 0.7);
           console.log('🔥 Tir rapide! Cooldown:', playerRef.current.projectileCooldown);
         }
         break;
       case 'arrow_speed':
-        // Powerup spécifique au rodeur = flèches plus rapides
         if (isRogue) {
-          playerRef.current.arrowCooldown = Math.max(100, playerRef.current.arrowCooldown * 0.75); // -25% cooldown
+          playerRef.current.arrowCooldown = Math.max(100, playerRef.current.arrowCooldown * 0.75);
           console.log('💨 Flèches rapides! Cooldown:', playerRef.current.arrowCooldown);
         }
         break;
       case 'multi_arrows':
-        // Powerup spécifique au rodeur = plus de flèches
         if (isRogue) {
           playerRef.current.maxArrows = (playerRef.current.maxArrows || 1) + 1;
           console.log('🎯 Multi-flèches! Max flèches:', playerRef.current.maxArrows);
         }
         break;
       case 'spear_speed':
-        // Powerup spécifique au templier déchu = lance plus rapide
         if (spearRef.current) {
-          spearRef.current.attackCooldown = Math.max(200, spearRef.current.attackCooldown * 0.7); // -30% cooldown
+          spearRef.current.attackCooldown = Math.max(200, spearRef.current.attackCooldown * 0.7);
           console.log('⚔️ Lance rapide! Cooldown:', spearRef.current.attackCooldown);
         }
         break;
       case 'spear_range':
-        // Powerup spécifique au templier déchu = portée augmentée
         if (spearRef.current) {
-          spearRef.current.baseDistance *= 1.5; // +50% distance de base
-          spearRef.current.attackDistance *= 1.5; // +50% distance d'attaque
+          spearRef.current.baseDistance *= 1.5;
+          spearRef.current.attackDistance *= 1.5;
           console.log('📏 Portée augmentée! Distance:', spearRef.current.attackDistance);
         }
         break;
@@ -1905,13 +1022,11 @@ const Game = () => {
         console.warn('Type de powerup inconnu:', powerupType);
     }
     
-    // Détruire le powerup
     if (currentPowerup && currentPowerup.sprite && currentPowerup.sprite.parent) {
       currentPowerup.sprite.parent.removeChild(currentPowerup.sprite);
     }
     currentPowerup.isAlive = false;
     
-    // Fermer le modal et réinitialiser le flag
     setShowPowerupSelector(false);
     setCurrentPowerup(null);
     powerupCollisionDetectedRef.current = false;
@@ -1927,7 +1042,6 @@ const Game = () => {
     powerupCollisionDetectedRef.current = false;
   };
 
-  // Debug effect
   useEffect(() => {
     console.log('showPowerupSelector changed:', showPowerupSelector);
   }, [showPowerupSelector]);
