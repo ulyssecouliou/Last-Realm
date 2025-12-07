@@ -186,6 +186,238 @@ class Monster {
   }
 }
 
+// Classe Fireball (boule de feu du monstre épique)
+class Fireball {
+  constructor(x, y, targetX, targetY) {
+    this.x = x;
+    this.y = y;
+    this.speed = 0.6;
+    
+    // Calculer la direction vers la cible
+    const dx = targetX - x;
+    const dy = targetY - y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    this.velocityX = (dx / distance) * this.speed;
+    this.velocityY = (dy / distance) * this.speed;
+    
+    this.sprite = null;
+    this.hitbox = null;
+    this.isAlive = true;
+    this.lifespan = 400; // Durée de vie en frames
+    this.age = 0;
+    this.damage = 3; // Dégâts élevés
+  }
+
+  update(mapWidth = 2400, mapHeight = 2400) {
+    this.x += this.velocityX;
+    this.y += this.velocityY;
+    this.age++;
+
+    // Détruire la boule de feu après sa durée de vie
+    if (this.age > this.lifespan) {
+      this.destroy();
+    }
+
+    // Détruire si sort de la map
+    if (this.x < -50 || this.x > mapWidth + 50 || this.y < -50 || this.y > mapHeight + 50) {
+      this.destroy();
+    }
+
+    if (this.sprite) {
+      this.sprite.x = this.x;
+      this.sprite.y = this.y;
+      // Rotation pour effet visuel
+      this.sprite.rotation += 0.1;
+    }
+
+    // Mettre à jour la hitbox
+    if (this.hitbox) {
+      this.hitbox.x = this.x;
+      this.hitbox.y = this.y;
+    }
+  }
+
+  setSprite(sprite) {
+    this.sprite = sprite;
+    sprite.x = this.x;
+    sprite.y = this.y;
+  }
+
+  setHitbox(hitbox) {
+    this.hitbox = hitbox;
+    hitbox.x = this.x;
+    hitbox.y = this.y;
+  }
+
+  checkCollision(player) {
+    const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
+    return distance < 30;
+  }
+
+  destroy() {
+    this.isAlive = false;
+    if (this.sprite && this.sprite.parent) {
+      this.sprite.parent.removeChild(this.sprite);
+    }
+    if (this.hitbox && this.hitbox.parent) {
+      this.hitbox.parent.removeChild(this.hitbox);
+    }
+  }
+}
+
+// Classe EpicMonster (monstre épique avec attaques à distance)
+class EpicMonster {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.speed = 0.25; // Plus lent que les monstres normaux
+    this.sprite = null;
+    this.healthBar = null;
+    this.healthBarBackground = null;
+    this.health = 10; // Plus résistant
+    this.maxHealth = 10;
+    this.isAlive = true;
+    this.lastFireballTime = 0;
+    this.fireballCooldown = 2000; // Tire toutes les 2 secondes
+    this.attackRange = 300; // Distance d'attaque
+    this.minDistance = 150; // Distance minimale à maintenir
+  }
+
+  update(player, otherMonsters = []) {
+    if (!player) return;
+
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Comportement : maintenir une distance et tirer
+    if (distance > this.attackRange) {
+      // Trop loin, se rapprocher
+      const newX = this.x + (dx / distance) * this.speed;
+      const newY = this.y + (dy / distance) * this.speed;
+
+      // Vérifier les collisions avec les autres monstres
+      let collision = false;
+      for (let other of otherMonsters) {
+        if (other !== this && other.isAlive) {
+          const otherDx = newX - other.x;
+          const otherDy = newY - other.y;
+          const otherDistance = Math.sqrt(otherDx * otherDx + otherDy * otherDy);
+          
+          if (otherDistance < 40) {
+            collision = true;
+            break;
+          }
+        }
+      }
+
+      if (!collision) {
+        this.x = newX;
+        this.y = newY;
+      }
+    } else if (distance < this.minDistance) {
+      // Trop proche, reculer
+      const newX = this.x - (dx / distance) * this.speed;
+      const newY = this.y - (dy / distance) * this.speed;
+
+      let collision = false;
+      for (let other of otherMonsters) {
+        if (other !== this && other.isAlive) {
+          const otherDx = newX - other.x;
+          const otherDy = newY - other.y;
+          const otherDistance = Math.sqrt(otherDx * otherDx + otherDy * otherDy);
+          
+          if (otherDistance < 40) {
+            collision = true;
+            break;
+          }
+        }
+      }
+
+      if (!collision) {
+        this.x = newX;
+        this.y = newY;
+      }
+    }
+    // Sinon reste à distance optimale
+
+    // Mettre à jour le sprite
+    if (this.sprite) {
+      this.sprite.x = this.x;
+      this.sprite.y = this.y;
+    }
+
+    // Mettre à jour la barre de vie
+    this.updateHealthBar();
+  }
+
+  updateHealthBar() {
+    if (this.healthBarBackground && this.healthBar) {
+      // Positionner au-dessus du monstre
+      this.healthBarBackground.x = this.x - 40;
+      this.healthBarBackground.y = this.y - 50;
+      this.healthBar.x = this.x - 40;
+      this.healthBar.y = this.y - 50;
+
+      // Mettre à jour la largeur de la barre
+      const healthPercent = Math.max(0, this.health / this.maxHealth);
+      this.healthBar.clear();
+      this.healthBar.beginFill(0x00FF00);
+      this.healthBar.drawRect(0, 0, 80 * healthPercent, 8);
+      this.healthBar.endFill();
+    }
+  }
+
+  canShoot(currentTime) {
+    return currentTime - this.lastFireballTime > this.fireballCooldown;
+  }
+
+  shoot(currentTime, targetX, targetY) {
+    this.lastFireballTime = currentTime;
+    return new Fireball(this.x, this.y, targetX, targetY);
+  }
+
+  setSprite(sprite) {
+    this.sprite = sprite;
+    sprite.x = this.x;
+    sprite.y = this.y;
+  }
+
+  setHealthBar(background, bar) {
+    this.healthBarBackground = background;
+    this.healthBar = bar;
+  }
+
+  checkCollision(player) {
+    const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
+    return distance < 30;
+  }
+
+  takeDamage(damage) {
+    this.health = Math.max(0, this.health - damage);
+    console.log(`💔 Monstre épique blessé! HP: ${this.health}/${this.maxHealth}`);
+    if (this.health <= 0) {
+      this.destroy();
+      return true;
+    }
+    return false;
+  }
+
+  destroy() {
+    this.isAlive = false;
+    if (this.sprite && this.sprite.parent) {
+      this.sprite.parent.removeChild(this.sprite);
+    }
+    if (this.healthBarBackground && this.healthBarBackground.parent) {
+      this.healthBarBackground.parent.removeChild(this.healthBarBackground);
+    }
+    if (this.healthBar && this.healthBar.parent) {
+      this.healthBar.parent.removeChild(this.healthBar);
+    }
+  }
+}
+
 // Classe Sword (épée qui tourne autour du joueur)
 class Sword {
   constructor(player, radius = 120) {
@@ -234,6 +466,7 @@ class Spear {
   constructor(player) {
     this.player = player;
     this.sprite = null;
+    this.hitbox = null;
     this.damage = 1;
     this.attackCooldown = 500; // Millisecondes entre les attaques
     this.lastAttackTime = 0;
@@ -243,6 +476,7 @@ class Spear {
     this.baseDistance = 80; // Distance de base devant le joueur
     this.attackDistance = 140; // Distance pendant l'attaque
     this.currentDistance = this.baseDistance;
+    this.hasHit = false; // Pour éviter de frapper plusieurs fois pendant une attaque
   }
 
   update() {
@@ -279,7 +513,14 @@ class Spear {
       this.sprite.x = this.x;
       this.sprite.y = this.y;
       // Orienter la lance dans la direction du joueur
-      this.sprite.rotation = Math.atan2(direction.y, direction.x);
+      // Ajouter π/2 car l'image pointe à droite par défaut (anchor 0, 0.5)
+      this.sprite.rotation = Math.atan2(direction.y, direction.x) + Math.PI / 2;
+    }
+
+    // Mettre à jour la hitbox
+    if (this.hitbox) {
+      this.hitbox.x = this.x;
+      this.hitbox.y = this.y;
     }
   }
 
@@ -287,6 +528,7 @@ class Spear {
     this.isAttacking = true;
     this.lastAttackTime = currentTime;
     this.attackStartTime = currentTime;
+    this.hasHit = false; // Réinitialiser le flag à chaque nouvelle attaque
   }
 
   setSprite(sprite) {
@@ -295,10 +537,21 @@ class Spear {
     sprite.y = this.y;
   }
 
-  // Vérifier collision avec un monstre
+  setHitbox(hitbox) {
+    this.hitbox = hitbox;
+    hitbox.x = this.x;
+    hitbox.y = this.y;
+  }
+
+  // Vérifier collision avec un monstre (seulement pendant l'attaque)
   checkCollision(monster) {
+    if (!this.isAttacking || this.hasHit) return false;
     const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
-    return distance < 40; // Distance de collision de la lance
+    if (distance < 60) { // Augmenté pour correspondre au sprite entier
+      this.hasHit = true;
+      return true;
+    }
+    return false;
   }
 }
 
@@ -349,6 +602,7 @@ class Arrow {
     this.velocityX = dirX * this.speed;
     this.velocityY = dirY * this.speed;
     this.sprite = null;
+    this.hitbox = null;
     this.isAlive = true;
     this.lifespan = 300; // Durée de vie en frames
     this.age = 0;
@@ -376,6 +630,12 @@ class Arrow {
       // Orienter la flèche dans la direction de tir
       this.sprite.rotation = Math.atan2(this.velocityY, this.velocityX);
     }
+
+    // Mettre à jour la hitbox
+    if (this.hitbox) {
+      this.hitbox.x = this.x;
+      this.hitbox.y = this.y;
+    }
   }
 
   setSprite(sprite) {
@@ -384,15 +644,24 @@ class Arrow {
     sprite.y = this.y;
   }
 
+  setHitbox(hitbox) {
+    this.hitbox = hitbox;
+    hitbox.x = this.x;
+    hitbox.y = this.y;
+  }
+
   checkCollision(monster) {
     const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
-    return distance < 35; // Distance de collision augmentée pour les flèches
+    return distance < 45; // Augmenté pour correspondre au sprite entier
   }
 
   destroy() {
     this.isAlive = false;
     if (this.sprite && this.sprite.parent) {
       this.sprite.parent.removeChild(this.sprite);
+    }
+    if (this.hitbox && this.hitbox.parent) {
+      this.hitbox.parent.removeChild(this.hitbox);
     }
   }
 }
@@ -618,6 +887,8 @@ const Game = () => {
   const playerRef = useRef(null);
   const keysRef = useRef({ left: false, right: false, up: false, down: false });
   const monstersRef = useRef([]);
+  const epicMonstersRef = useRef([]);
+  const fireballsRef = useRef([]);
   const swordRef = useRef(null);
   const spearRef = useRef(null);
   const healthDisplayRef = useRef(null);
@@ -665,6 +936,7 @@ const Game = () => {
             '/epee.png',
             '/lance.png',
             '/monster.png.png',
+            '/monstreEpique.png',
             '/—Pngtree—pixel art red heart vector_21298284.png'
           ]);
           console.log('✅ Tous les assets chargés');
@@ -915,6 +1187,15 @@ const Game = () => {
             gameWorld.addChild(fallbackSpear);
             console.log('Sprite de remplacement lance créé');
           }
+
+          // Créer la hitbox visible de la lance (cercle rouge semi-transparent)
+          const spearHitbox = new PIXI.Graphics();
+          spearHitbox.beginFill(0xFF0000, 0.3); // Rouge semi-transparent
+          spearHitbox.drawCircle(0, 0, 65); // Augmenté pour correspondre au sprite entier
+          spearHitbox.endFill();
+          spear.setHitbox(spearHitbox);
+          gameWorld.addChild(spearHitbox);
+          console.log('Hitbox de la lance créée');
         }
 
         // Gestion des entrées
@@ -1010,6 +1291,76 @@ const Game = () => {
         
         // Spawn des monstres toutes les 5 secondes
         const monsterSpawnInterval = setInterval(createMonster, 5000);
+
+        // Fonction pour créer un monstre épique
+        const createEpicMonster = async () => {
+          try {
+            // Position aléatoire sur la map (loin du joueur)
+            let x, y;
+            do {
+              x = Math.random() * MAP_WIDTH;
+              y = Math.random() * MAP_HEIGHT;
+              const dx = x - playerRef.current.x;
+              const dy = y - playerRef.current.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              // Spawn à au moins 400px du joueur
+              if (distance > 400) break;
+            } while (true);
+
+            const epicMonster = new EpicMonster(x, y);
+
+            // Charger le sprite du monstre épique
+            try {
+              const epicTexture = await PIXI.Assets.load('/monstreEpique.png');
+              const epicSprite = new PIXI.Sprite(epicTexture);
+              epicSprite.anchor.set(0.5);
+              epicSprite.scale.set(0.2); // Plus grand que les monstres normaux
+              epicMonster.setSprite(epicSprite);
+              gameWorldRef.current.addChild(epicSprite);
+              console.log('👹 Monstre épique créé!');
+            } catch (error) {
+              console.log('Erreur chargement monstre épique, création sprite de remplacement');
+              const fallbackSprite = new PIXI.Graphics();
+              fallbackSprite.beginFill(0xFF0000); // Rouge vif
+              fallbackSprite.drawCircle(0, 0, 30);
+              fallbackSprite.endFill();
+              fallbackSprite.beginFill(0xFF4500);
+              fallbackSprite.drawCircle(0, 0, 20);
+              fallbackSprite.endFill();
+              epicMonster.setSprite(fallbackSprite);
+              gameWorldRef.current.addChild(fallbackSprite);
+            }
+
+            // Créer la barre de vie du monstre épique
+            const healthBarBackground = new PIXI.Graphics();
+            healthBarBackground.beginFill(0x333333);
+            healthBarBackground.drawRect(0, 0, 80, 8);
+            healthBarBackground.endFill();
+            healthBarBackground.x = x - 40;
+            healthBarBackground.y = y - 50;
+            gameWorldRef.current.addChild(healthBarBackground);
+
+            const healthBar = new PIXI.Graphics();
+            healthBar.beginFill(0x00FF00);
+            healthBar.drawRect(0, 0, 80, 8);
+            healthBar.endFill();
+            healthBar.x = x - 40;
+            healthBar.y = y - 50;
+            gameWorldRef.current.addChild(healthBar);
+
+            epicMonster.setHealthBar(healthBarBackground, healthBar);
+
+            epicMonstersRef.current.push(epicMonster);
+          } catch (error) {
+            console.error('Erreur création monstre épique:', error);
+          }
+        };
+
+        // Créer le premier monstre épique après 10 secondes
+        setTimeout(createEpicMonster, 10000);
+        
+        // Spawn d'un monstre épique toutes les 30 secondes
+        const epicMonsterSpawnInterval = setInterval(createEpicMonster, 30000);
 
         // Fonction pour créer un powerup
         const createPowerup = async (x, y, type) => {
@@ -1167,6 +1518,17 @@ const Game = () => {
                 arrowSprite.x = arrow.x;
                 arrowSprite.y = arrow.y;
                 gameWorldRef.current.addChild(arrowSprite);
+
+                // Créer la hitbox visible de la flèche (cercle rouge semi-transparent)
+                const arrowHitbox = new PIXI.Graphics();
+                arrowHitbox.beginFill(0xFF0000, 0.3); // Rouge semi-transparent
+                arrowHitbox.drawCircle(0, 0, 45); // Augmenté pour correspondre au sprite entier
+                arrowHitbox.endFill();
+                arrowHitbox.x = arrow.x;
+                arrowHitbox.y = arrow.y;
+                arrow.setHitbox(arrowHitbox);
+                gameWorldRef.current.addChild(arrowHitbox);
+
                 arrowsRef.current.push(arrow);
                 console.log('🏹 Flèche lancée! Position:', arrow.x.toFixed(0), arrow.y.toFixed(0), 'Vélocité:', arrow.velocityX.toFixed(2), arrow.velocityY.toFixed(2));
               }
@@ -1230,15 +1592,18 @@ const Game = () => {
 
                 // Vérifier collision avec la lance
                 if (spearRef.current && spearRef.current.checkCollision(monster)) {
+                  console.log('💥 Collision lance détectée! Monster HP:', monster.health, 'Attaque en cours:', spearRef.current.isAttacking);
                   const isDead = monster.takeDamage(spearRef.current.damage);
                   if (isDead) {
-                    console.log('Monstre tué par la lance!');
+                    console.log('⚔️ Monstre tué par la lance!');
                     // Gagner de l'expérience
                     const levelUp = playerRef.current.gainExperience(25);
                     updateLevelDisplay();
                     if (levelUp) {
                       console.log('🎉 LEVEL UP! Niveau:', playerRef.current.level);
                     }
+                  } else {
+                    console.log('💔 Monstre blessé par la lance! HP restant:', monster.health);
                   }
                 }
 
@@ -1262,16 +1627,19 @@ const Game = () => {
                 // Vérifier collision avec les flèches (pour le rodeur)
                 arrowsRef.current.forEach((arrow) => {
                   if (arrow.isAlive && arrow.checkCollision(monster)) {
+                    console.log('💥 Collision flèche détectée! Monster HP:', monster.health);
                     const isDead = monster.takeDamage(1);
                     arrow.destroy();
                     if (isDead) {
-                      console.log('Monstre tué par flèche!');
+                      console.log('🏹 Monstre tué par flèche!');
                       // Gagner de l'expérience
                       const levelUp = playerRef.current.gainExperience(25);
                       updateLevelDisplay();
                       if (levelUp) {
                         console.log('🎉 LEVEL UP! Niveau:', playerRef.current.level);
                       }
+                    } else {
+                      console.log('💔 Monstre blessé par flèche! HP restant:', monster.health);
                     }
                   }
                 });
@@ -1295,8 +1663,118 @@ const Game = () => {
             // Nettoyer les powerups morts
             powerupsRef.current = powerupsRef.current.filter(powerup => powerup.isAlive);
 
+            // Mettre à jour tous les monstres épiques
+            epicMonstersRef.current.forEach((epicMonster) => {
+              if (epicMonster.isAlive && playerRef.current) {
+                // Mettre à jour position (avec comportement de maintien de distance)
+                epicMonster.update(playerRef.current, [...monstersRef.current, ...epicMonstersRef.current]);
+
+                // Tirer des boules de feu
+                const currentTime = Date.now();
+                if (epicMonster.canShoot(currentTime)) {
+                  const fireball = epicMonster.shoot(currentTime, playerRef.current.x, playerRef.current.y);
+                  
+                  // Créer le sprite de la boule de feu
+                  const fireballSprite = new PIXI.Graphics();
+                  fireballSprite.beginFill(0xFF4500, 1); // Orange-rouge
+                  fireballSprite.drawCircle(0, 0, 15);
+                  fireballSprite.endFill();
+                  fireballSprite.beginFill(0xFFFF00, 0.8); // Jaune au centre
+                  fireballSprite.drawCircle(0, 0, 8);
+                  fireballSprite.endFill();
+                  fireball.setSprite(fireballSprite);
+                  gameWorldRef.current.addChild(fireballSprite);
+
+                  // Créer la hitbox visible de la boule de feu
+                  const fireballHitbox = new PIXI.Graphics();
+                  fireballHitbox.beginFill(0xFF0000, 0.3);
+                  fireballHitbox.drawCircle(0, 0, 30);
+                  fireballHitbox.endFill();
+                  fireball.setHitbox(fireballHitbox);
+                  gameWorldRef.current.addChild(fireballHitbox);
+
+                  fireballsRef.current.push(fireball);
+                  console.log('🔥 Boule de feu lancée par le monstre épique!');
+                }
+
+                // Vérifier collisions des armes avec le monstre épique
+                if (swordRef.current && swordRef.current.checkCollision(epicMonster)) {
+                  const isDead = epicMonster.takeDamage(swordRef.current.damage);
+                  if (isDead) {
+                    console.log('👹 Monstre épique tué par l\'épée!');
+                    playerRef.current.gainExperience(100); // Plus d'XP
+                    updateLevelDisplay();
+                  }
+                }
+
+                if (spearRef.current && spearRef.current.checkCollision(epicMonster)) {
+                  const isDead = epicMonster.takeDamage(spearRef.current.damage);
+                  if (isDead) {
+                    console.log('👹 Monstre épique tué par la lance!');
+                    playerRef.current.gainExperience(100);
+                    updateLevelDisplay();
+                  }
+                }
+
+                // Vérifier collision avec les projectiles
+                projectilesRef.current.forEach((projectile) => {
+                  if (projectile.isAlive && projectile.checkCollision(epicMonster)) {
+                    const isDead = epicMonster.takeDamage(projectile.damage);
+                    projectile.destroy();
+                    if (isDead) {
+                      console.log('👹 Monstre épique tué par projectile!');
+                      playerRef.current.gainExperience(100);
+                      updateLevelDisplay();
+                    }
+                  }
+                });
+
+                // Vérifier collision avec les flèches
+                arrowsRef.current.forEach((arrow) => {
+                  if (arrow.isAlive && arrow.checkCollision(epicMonster)) {
+                    const isDead = epicMonster.takeDamage(1);
+                    arrow.destroy();
+                    if (isDead) {
+                      console.log('👹 Monstre épique tué par flèche!');
+                      playerRef.current.gainExperience(100);
+                      updateLevelDisplay();
+                    }
+                  }
+                });
+
+                // Vérifier collision corps à corps avec le joueur
+                if (epicMonster.checkCollision(playerRef.current)) {
+                  const isDead = playerRef.current.takeDamage(2, epicMonster.x, epicMonster.y); // Plus de dégâts
+                  updateHealthDisplay();
+                  if (isDead) {
+                    console.log('💀 Game Over!');
+                  }
+                }
+              }
+            });
+
+            // Mettre à jour toutes les boules de feu
+            fireballsRef.current.forEach((fireball) => {
+              if (fireball.isAlive) {
+                fireball.update(MAP_WIDTH, MAP_HEIGHT);
+
+                // Vérifier collision avec le joueur
+                if (fireball.checkCollision(playerRef.current)) {
+                  const isDead = playerRef.current.takeDamage(fireball.damage, fireball.x, fireball.y);
+                  fireball.destroy();
+                  updateHealthDisplay();
+                  console.log('🔥 Touché par une boule de feu! HP:', playerRef.current.health);
+                  if (isDead) {
+                    console.log('💀 Game Over!');
+                  }
+                }
+              }
+            });
+
             // Nettoyer les monstres morts
             monstersRef.current = monstersRef.current.filter(monster => monster.isAlive);
+            epicMonstersRef.current = epicMonstersRef.current.filter(monster => monster.isAlive);
+            fireballsRef.current = fireballsRef.current.filter(fireball => fireball.isAlive);
 
             // Nettoyer les projectiles morts
             projectilesRef.current = projectilesRef.current.filter(projectile => projectile.isAlive);
@@ -1313,6 +1791,7 @@ const Game = () => {
           window.removeEventListener('keydown', handleKeyDown);
           window.removeEventListener('keyup', handleKeyUp);
           clearInterval(monsterSpawnInterval);
+          clearInterval(epicMonsterSpawnInterval);
           clearInterval(powerupSpawnInterval);
           if (powerupSelectorTimeoutRef.current) {
             clearTimeout(powerupSelectorTimeoutRef.current);
