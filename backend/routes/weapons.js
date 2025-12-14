@@ -12,7 +12,7 @@ router.post('/initialize', async (req, res) => {
       where: { name: 'Épée de Base' },
       defaults: {
         name: 'Épée de Base',
-        damage: 1,
+        damage: 10,
         hitboxWidth: 50,
         hitboxHeight: 160, // Valeur du script
         rotationSpeed: 0.005,
@@ -25,7 +25,7 @@ router.post('/initialize', async (req, res) => {
       await weapon.update({
         hitboxWidth: 50,
         hitboxHeight: 160, // Force la mise à jour
-        damage: 1,
+        damage: 10,
         rotationSpeed: 0.005,
         radius: 120
       });

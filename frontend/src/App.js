@@ -5,6 +5,9 @@ import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Dashboard from './components/Dashboard';
 import Game from './components/Game';
+import Stats from './components/Stats';
+import Wiki from './components/Wiki';
+import Histoire from './components/Histoire';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -48,6 +51,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <Game />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/stats" 
+            element={
+              <ProtectedRoute>
+                <Stats />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/wiki" 
+            element={
+              <ProtectedRoute>
+                <Wiki />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/histoire" 
+            element={
+              <ProtectedRoute>
+                <Histoire />
               </ProtectedRoute>
             } 
           />

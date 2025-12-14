@@ -38,6 +38,7 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/game', require('./routes/game'));
 app.use('/api/weapons', require('./routes/weapons'));
+app.use('/api/stats', require('./routes/stats'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -56,7 +57,7 @@ async function startServer() {
     await testConnection();
     
     // Sync database models
-    await sequelize.sync({ force: false });
+    await sequelize.sync({ force: false, alter: true });
     console.log('📊 Database synchronized');
     
     // Initialiser automatiquement l'épée de base

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as PIXI from 'pixi.js';
+import axios from 'axios';
 import PowerupSelector from './PowerupSelector';
 
   // Classe Player avec système de vie
@@ -23,6 +24,9 @@ class Player {
     this.speedMultiplier = 1;
     this.rotationSpeedMultiplier = 1;
     this.sizeMultiplier = 1;
+    this.fireballSizeMultiplier = 1;
+    this.damageMultiplier = 1;
+    this.projectilesPerShot = 1;
     // Système d'expérience
     this.level = 1;
     this.experience = 0;
@@ -132,6 +136,103 @@ class Player {
   }
 }
 
+class Spear {
+  constructor(player, angleOffset = 0) {
+    this.player = player;
+    this.angleOffset = angleOffset;
+    this.sprite = null;
+    this.hitboxSprite = null;
+
+    this.damage = 3;
+    this.baseDistance = 70;
+    this.thrustDistance = 75;
+    this.tipRadius = 22;
+
+    this.angle = 0;
+    this.phase = 0;
+    this.thrustSpeed = 0.04;
+
+    this.x = player?.x || 0;
+    this.y = player?.y || 0;
+    this.tipX = this.x;
+    this.tipY = this.y;
+  }
+
+  setSprite(sprite) {
+    this.sprite = sprite;
+    if (sprite) {
+      sprite.x = this.x;
+      sprite.y = this.y;
+    }
+  }
+
+  setHitboxSprite(hitboxSprite) {
+    this.hitboxSprite = hitboxSprite;
+    if (hitboxSprite) {
+      hitboxSprite.x = this.tipX;
+      hitboxSprite.y = this.tipY;
+    }
+  }
+
+  update(monsters = []) {
+    if (!this.player) return;
+
+    let best = null;
+    let bestDist = Infinity;
+    for (const m of monsters) {
+      if (!m || !m.isAlive) continue;
+      const dx = m.x - this.player.x;
+      const dy = m.y - this.player.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bestDist) {
+        bestDist = d;
+        best = m;
+      }
+    }
+
+    if (best && bestDist > 0) {
+      this.angle = Math.atan2(best.y - this.player.y, best.x - this.player.x);
+    }
+
+    const finalAngle = this.angle + (Number(this.angleOffset) || 0);
+
+    const rotationMultiplier = Math.max(0.25, Number(this.player?.rotationSpeedMultiplier) || 1);
+    this.phase += this.thrustSpeed * rotationMultiplier;
+    if (this.phase > Math.PI * 2) this.phase -= Math.PI * 2;
+
+    const thrust = (Math.sin(this.phase) * 0.5 + 0.5) * this.thrustDistance;
+    const dist = this.baseDistance + thrust;
+    const ux = Math.cos(finalAngle);
+    const uy = Math.sin(finalAngle);
+
+    this.x = this.player.x + ux * dist;
+    this.y = this.player.y + uy * dist;
+
+    const tipDist = dist + 55;
+    this.tipX = this.player.x + ux * tipDist;
+    this.tipY = this.player.y + uy * tipDist;
+
+    if (this.sprite) {
+      this.sprite.x = this.x;
+      this.sprite.y = this.y;
+      this.sprite.rotation = finalAngle + Math.PI / 2;
+    }
+
+    if (this.hitboxSprite) {
+      this.hitboxSprite.x = this.tipX;
+      this.hitboxSprite.y = this.tipY;
+    }
+  }
+
+  checkCollision(monster) {
+    if (!monster || !monster.isAlive) return false;
+    const dx = monster.x - this.tipX;
+    const dy = monster.y - this.tipY;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    return d < (this.tipRadius + (monster.hitboxRadius || 20));
+  }
+}
+
 // Classe Monster
 class Monster {
   constructor(x, y, targetPlayer) {
@@ -141,11 +242,16 @@ class Monster {
     this.sprite = null;
     this.targetPlayer = targetPlayer;
     this.isAlive = true;
-    this.health = 3; // Points de vie des monstres
-    this.maxHealth = 3;
+    this.health = 10; // Points de vie des monstres
+    this.maxHealth = 10;
     // Hitbox pour debug visuel
     this.hitboxSprite = null;
     this.hitboxRadius = 20; // Rayon de collision du monstre
+
+    this.lastDamageAt = 0;
+    this.damageCooldownMs = 250;
+
+    this.healthBar = null;
   }
 
   update(otherMonsters = []) {
@@ -215,7 +321,12 @@ class Monster {
     return distance < 20; // Distance de collision
   }
 
-  takeDamage(damage) {
+  takeDamage(damage, nowMs = Date.now()) {
+    if (nowMs - this.lastDamageAt < this.damageCooldownMs) {
+      return false;
+    }
+
+    this.lastDamageAt = nowMs;
     this.health = Math.max(0, this.health - damage);
     if (this.health <= 0) {
       this.destroy();
@@ -232,6 +343,131 @@ class Monster {
     if (this.hitboxSprite && this.hitboxSprite.parent) {
       this.hitboxSprite.parent.removeChild(this.hitboxSprite);
     }
+    if (this.healthBar && this.healthBar.parent) {
+      this.healthBar.parent.removeChild(this.healthBar);
+    }
+  }
+}
+
+class Projectile {
+  constructor(x, y, vx, vy) {
+    this.x = x;
+    this.y = y;
+    this.vx = vx;
+    this.vy = vy;
+    this.sprite = null;
+    this.isAlive = true;
+    this.radius = 1;
+    this.damage = 5;
+  }
+
+  update(mapWidth, mapHeight) {
+    if (!this.isAlive) return;
+    this.x += this.vx;
+    this.y += this.vy;
+
+    if (this.sprite) {
+      this.sprite.x = this.x;
+      this.sprite.y = this.y;
+    }
+
+    if (this.x < -100 || this.y < -100 || this.x > mapWidth + 100 || this.y > mapHeight + 100) {
+      this.destroy();
+    }
+  }
+
+  setSprite(sprite) {
+    this.sprite = sprite;
+    sprite.x = this.x;
+    sprite.y = this.y;
+  }
+
+  checkCollision(player) {
+    const distance = Math.sqrt((this.x - player.x) ** 2 + (this.y - player.y) ** 2);
+    return distance < (this.radius + player.hitboxRadius);
+  }
+
+  destroy() {
+    this.isAlive = false;
+    if (this.sprite && this.sprite.parent) {
+      this.sprite.parent.removeChild(this.sprite);
+    }
+  }
+}
+
+class PlayerProjectile extends Projectile {
+  constructor(x, y, vx, vy, sizeMultiplier = 1, damageMultiplier = 1) {
+    super(x, y, vx, vy);
+    this.radius = 12 * Math.max(0.5, Number(sizeMultiplier) || 1);
+    this.damage = 5 * Math.max(0.25, Number(damageMultiplier) || 1);
+  }
+
+  checkCollisionMonster(monster) {
+    const distance = Math.sqrt((this.x - monster.x) ** 2 + (this.y - monster.y) ** 2);
+    return distance < (this.radius + (monster.hitboxRadius || 20));
+  }
+}
+
+class RangerArrow extends PlayerProjectile {
+  constructor(x, y, vx, vy, sizeMultiplier = 1, damageMultiplier = 1, maxDistance = 720) {
+    super(x, y, vx, vy, sizeMultiplier, damageMultiplier);
+    this.startX = x;
+    this.startY = y;
+    this.maxDistance = maxDistance;
+    this.hitMonsterIds = new Set();
+  }
+
+  update(mapWidth, mapHeight) {
+    super.update(mapWidth, mapHeight);
+    if (!this.isAlive) return;
+
+    const dx = this.x - this.startX;
+    const dy = this.y - this.startY;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d >= this.maxDistance) {
+      this.destroy();
+      return;
+    }
+
+    if (this.sprite) {
+      this.sprite.rotation = Math.atan2(this.vy, this.vx);
+    }
+  }
+}
+
+class EpicMonster extends Monster {
+  constructor(x, y, targetPlayer) {
+    super(x, y, targetPlayer);
+    this.health = 50;
+    this.maxHealth = 50;
+    this.hitboxRadius = 30;
+    this.speed = 0.22;
+    this.shootCooldownMs = 3600;
+    this.lastShotAt = 0;
+
+    this.damageCooldownMs = 300;
+  }
+
+  tryShoot(projectilesRef, gameWorld, createProjectileSprite, nowMs) {
+    if (!this.isAlive || !this.targetPlayer) return;
+    if (nowMs - this.lastShotAt < this.shootCooldownMs) return;
+
+    const dx = this.targetPlayer.x - this.x;
+    const dy = this.targetPlayer.y - this.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance <= 0) return;
+
+    const speed = 1.1;
+    const vx = (dx / distance) * speed;
+    const vy = (dy / distance) * speed;
+
+    const projectile = new Projectile(this.x, this.y, vx, vy);
+    const projectileSprite = createProjectileSprite();
+    projectile.setSprite(projectileSprite);
+    gameWorld.addChild(projectileSprite);
+    projectilesRef.current.push(projectile);
+
+    this.lastShotAt = nowMs;
   }
 }
 
@@ -243,7 +479,7 @@ class Sword {
     this.angle = 0; // Angle de rotation
     this.rotationSpeed = 0.005; // Vitesse de rotation réduite par 10 (0.05/10 = 0.005)
     this.sprite = null;
-    this.damage = 1; // Dégâts infligés
+    this.damage = 10; // Dégâts infligés
     // Hitbox pour debug visuel
     this.hitboxSprite = null;
     this.hitboxWidth = 25; // Largeur de la hitbox (épée étroite)
@@ -387,13 +623,34 @@ const Game = () => {
   const playerRef = useRef(null);
   const keysRef = useRef({ left: false, right: false, up: false, down: false });
   const monstersRef = useRef([]);
+  const projectilesRef = useRef([]);
+  const playerProjectilesRef = useRef([]);
+  const projectileTextureRef = useRef(null);
+  const playerProjectileTextureRef = useRef(null);
+  const rangerProjectileTextureRef = useRef(null);
+  const spearTextureRef = useRef(null);
+  const gameStartAtRef = useRef(0);
+  const killsRef = useRef(0);
+  const epicKillsRef = useRef(0);
+  const gameOverShownRef = useRef(false);
   const swordRef = useRef(null);
+  const spearsRef = useRef([]);
+  const playerClassRef = useRef('knight');
+  const mageLastShotAtRef = useRef(0);
+  const modalOpenRef = useRef(false);
   const healthDisplayRef = useRef(null);
+  const timerTextRef = useRef(null);
+  const killsTextRef = useRef(null);
+  const quitButtonRef = useRef(null);
   const cameraRef = useRef({ x: 0, y: 0 });
   const backgroundRef = useRef(null);
   const powerupsRef = useRef([]);
   const [showPowerupSelector, setShowPowerupSelector] = useState(false);
   const [currentPowerup, setCurrentPowerup] = useState(null);
+  const [showGameOver, setShowGameOver] = useState(false);
+  const [finalScore, setFinalScore] = useState(0);
+  const [finalKills, setFinalKills] = useState(0);
+  const [finalTimeSeconds, setFinalTimeSeconds] = useState(0);
   const powerupSelectorTimeoutRef = useRef(null);
   const powerupCollisionDetectedRef = useRef(false);
   const gameWorldRef = useRef(null);
@@ -413,6 +670,122 @@ const Game = () => {
     hitbox.lineStyle(2, color, 0.8);
     hitbox.drawCircle(0, 0, radius);
     return hitbox;
+  };
+
+  const createSpearSprite = () => {
+    const texture = spearTextureRef.current;
+    if (texture) {
+      const sprite = new PIXI.Sprite(texture);
+      sprite.anchor.set(0.5);
+      sprite.scale.set(0.2);
+      sprite.alpha = 1;
+      return sprite;
+    }
+
+    const fallback = new PIXI.Graphics();
+    fallback.beginFill(0xD8C8A8);
+    fallback.drawRect(-8, -120, 16, 240);
+    fallback.endFill();
+    return fallback;
+  };
+
+  const createRangerProjectileSprite = () => {
+    const texture = rangerProjectileTextureRef.current;
+    if (texture) {
+      const sprite = new PIXI.Sprite(texture);
+      sprite.anchor.set(0.5);
+      sprite.scale.set(0.65 / 5);
+      sprite.alpha = 1;
+      return sprite;
+    }
+
+    const fallback = new PIXI.Graphics();
+    fallback.beginFill(0xffffff, 1);
+    fallback.drawRect(-30 / 5, -6 / 5, 60 / 5, 12 / 5);
+    fallback.endFill();
+    return fallback;
+  };
+
+  const createProjectileSprite = () => {
+    const texture = projectileTextureRef.current;
+    if (texture) {
+      const sprite = new PIXI.Sprite(texture);
+      sprite.anchor.set(0.5);
+      sprite.scale.set(0.35 / 5);
+      sprite.alpha = 1;
+      return sprite;
+    }
+
+    const fallback = new PIXI.Graphics();
+    fallback.beginFill(0xff6600, 1);
+    fallback.drawCircle(0, 0, 20 / 5);
+    fallback.endFill();
+    fallback.lineStyle(3, 0xffd700, 1);
+    fallback.drawCircle(0, 0, 20 / 5);
+    return fallback;
+  };
+
+  const createPlayerProjectileSprite = () => {
+    const texture = playerProjectileTextureRef.current;
+    if (texture) {
+      const sprite = new PIXI.Sprite(texture);
+      sprite.anchor.set(0.5);
+      sprite.scale.set(0.9 / 5);
+      sprite.alpha = 1;
+      return sprite;
+    }
+
+    const fallback = new PIXI.Graphics();
+    fallback.beginFill(0x66ccff, 1);
+    fallback.drawCircle(0, 0, 44 / 5);
+    fallback.endFill();
+    fallback.lineStyle(3, 0xffffff, 1);
+    fallback.drawCircle(0, 0, 44 / 5);
+    return fallback;
+  };
+
+  const createMonsterHealthBar = (monster) => {
+    const container = new PIXI.Container();
+
+    const background = new PIXI.Graphics();
+    background.beginFill(0x111111, 0.8);
+    background.drawRect(-22, -3, 44, 6);
+    background.endFill();
+
+    const bar = new PIXI.Graphics();
+    bar.beginFill(0x00ff00, 1);
+    bar.drawRect(-22, -3, 44, 6);
+    bar.endFill();
+
+    container.addChild(background);
+    container.addChild(bar);
+
+    container.bar = bar;
+    container.background = background;
+
+    container.x = monster.x;
+    container.y = monster.y - 40;
+
+    return container;
+  };
+
+  const updateMonsterHealthBar = (monster) => {
+    if (!monster.healthBar || !monster.healthBar.bar) return;
+
+    const ratio = monster.maxHealth > 0 ? (monster.health / monster.maxHealth) : 0;
+    const width = Math.max(0, Math.min(44, 44 * ratio));
+
+    let color = 0x00ff00;
+    if (ratio < 0.3) color = 0xff3b30;
+    else if (ratio < 0.6) color = 0xffcc00;
+
+    monster.healthBar.bar.clear();
+    monster.healthBar.bar.beginFill(color, 1);
+    monster.healthBar.bar.drawRect(-22, -3, width, 6);
+    monster.healthBar.bar.endFill();
+
+    monster.healthBar.x = monster.x;
+    monster.healthBar.y = monster.y - 40;
   };
 
   // Fonction pour créer une hitbox rectangulaire (pour l'épée)
@@ -435,25 +808,26 @@ const Game = () => {
     // Barre de fond (grise)
     const background = new PIXI.Graphics();
     background.beginFill(0x333333, 0.8);
-    background.drawRect(-50, -8, 100, 8);
+    background.drawRoundedRect(0, 0, 220, 14, 6);
     background.endFill();
     
     // Barre d'expérience (bleue)
     const expBar = new PIXI.Graphics();
     expBar.beginFill(0x0099ff, 1);
-    expBar.drawRect(-50, -8, 100, 8);
+    expBar.drawRoundedRect(0, 0, 220, 14, 6);
     expBar.endFill();
     
     // Texte du niveau
-    const levelText = new PIXI.Text(`Niv.${player.level}`, {
+    const levelText = new PIXI.Text(`Niv. ${player.level}`, {
       fontFamily: 'Arial',
-      fontSize: 12,
+      fontSize: 18,
       fill: 0xffffff,
       stroke: 0x000000,
       strokeThickness: 1
     });
-    levelText.anchor.set(0.5);
-    levelText.y = -20;
+    levelText.anchor.set(0, 0.5);
+    levelText.x = -80;
+    levelText.y = 7;
     
     expBarContainer.addChild(background);
     expBarContainer.addChild(expBar);
@@ -462,6 +836,8 @@ const Game = () => {
     // Stocker les références pour les mises à jour
     expBarContainer.expBar = expBar;
     expBarContainer.levelText = levelText;
+
+    expBarContainer.isUi = false;
     
     return expBarContainer;
   };
@@ -470,25 +846,43 @@ const Game = () => {
   const updateExperienceBar = (player) => {
     if (player.experienceBar) {
       const percent = player.getExperiencePercent();
-      const width = (percent / 100) * 100; // Largeur proportionnelle
+      const width = (percent / 100) * 220; // Largeur proportionnelle
       
       // Redessiner la barre d'expérience
       player.experienceBar.expBar.clear();
       player.experienceBar.expBar.beginFill(0x0099ff, 1);
-      player.experienceBar.expBar.drawRect(-50, -8, width, 8);
+      player.experienceBar.expBar.drawRoundedRect(0, 0, width, 14, 6);
       player.experienceBar.expBar.endFill();
       
       // Mettre à jour le texte du niveau
-      player.experienceBar.levelText.text = `Niv.${player.level}`;
-      
-      // Positionner au-dessus du joueur
-      player.experienceBar.x = player.x;
-      player.experienceBar.y = player.y - 40;
+      player.experienceBar.levelText.text = `Niv. ${player.level}`;
+
+      if (!player.experienceBar.isUi) {
+        // Positionner au-dessus du joueur
+        player.experienceBar.x = player.x;
+        player.experienceBar.y = player.y - 40;
+      } else {
+        const app = appRef.current;
+        if (app && app.screen) {
+          player.experienceBar.x = 220;
+          player.experienceBar.y = 14;
+        }
+      }
     }
   };
 
   useEffect(() => {
     console.log('🎮 Game component mounted - Initializing game');
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get('class');
+      const fromStorage = localStorage.getItem('lastrealm_player_class');
+      const raw = (fromQuery || fromStorage || 'knight');
+      playerClassRef.current = raw === 'mage' ? 'mage' : raw === 'ranger' ? 'ranger' : raw === 'templar' ? 'templar' : 'knight';
+    } catch (e) {
+      playerClassRef.current = 'knight';
+    }
     
     // Éviter la double initialisation
     if (appRef.current) {
@@ -506,6 +900,32 @@ const Game = () => {
           backgroundColor: 0x2c1810,
           antialias: true
         });
+
+        try {
+          projectileTextureRef.current = await PIXI.Assets.load('/projectile.png');
+          console.log('projectile.png chargée');
+        } catch (error) {
+          console.log('Erreur chargement projectile.png:', error);
+          projectileTextureRef.current = null;
+        }
+
+        try {
+          playerProjectileTextureRef.current = await PIXI.Assets.load('/projectile.png');
+        } catch (error) {
+          playerProjectileTextureRef.current = null;
+        }
+
+        try {
+          rangerProjectileTextureRef.current = await PIXI.Assets.load('/fleche.png');
+        } catch (error) {
+          rangerProjectileTextureRef.current = null;
+        }
+
+        try {
+          spearTextureRef.current = await PIXI.Assets.load('/lance.png');
+        } catch (error) {
+          spearTextureRef.current = null;
+        }
 
         appRef.current = app;
         if (gameRef.current && app.canvas) {
@@ -546,7 +966,13 @@ const Game = () => {
         // Créer le joueur au centre de la map
         const player = new Player(MAP_WIDTH / 2, MAP_HEIGHT / 2);
         playerRef.current = player;
-        
+
+        gameStartAtRef.current = Date.now();
+        killsRef.current = 0;
+        epicKillsRef.current = 0;
+        gameOverShownRef.current = false;
+        setShowGameOver(false);
+
         // Initialiser la caméra centrée sur le joueur
         cameraRef.current.x = player.x - app.screen.width / 2;
         cameraRef.current.y = player.y - app.screen.height / 2;
@@ -596,16 +1022,90 @@ const Game = () => {
         };
 
         await createHealthDisplay();
+
+        const createTopUi = () => {
+          const quitButton = new PIXI.Container();
+          const quitBg = new PIXI.Graphics();
+          quitBg.beginFill(0x111111, 0.8);
+          quitBg.lineStyle(2, 0xd4af37, 0.8);
+          quitBg.drawRoundedRect(0, 0, 110, 34, 8);
+          quitBg.endFill();
+
+          const quitText = new PIXI.Text('Quitter', {
+            fontFamily: 'Arial',
+            fontSize: 18,
+            fill: 0xffffff,
+            stroke: 0x000000,
+            strokeThickness: 2
+          });
+          quitText.anchor.set(0.5);
+          quitText.x = 55;
+          quitText.y = 17;
+          quitButton.addChild(quitBg);
+          quitButton.addChild(quitText);
+          quitButton.x = 10;
+          quitButton.y = 10;
+          quitButton.eventMode = 'static';
+          quitButton.cursor = 'pointer';
+          quitButton.on('pointerdown', () => {
+            navigate('/dashboard');
+          });
+          uiContainer.addChild(quitButton);
+          quitButtonRef.current = quitButton;
+
+          const timerText = new PIXI.Text('00:00', {
+            fontFamily: 'Arial',
+            fontSize: 30,
+            fill: 0xffffff,
+            stroke: 0x000000,
+            strokeThickness: 3
+          });
+          timerText.anchor.set(0.5, 0);
+          timerText.x = app.screen.width / 2;
+          timerText.y = 10;
+          uiContainer.addChild(timerText);
+          timerTextRef.current = timerText;
+
+          const killsText = new PIXI.Text('Kills: 0', {
+            fontFamily: 'Arial',
+            fontSize: 22,
+            fill: 0xffffff,
+            stroke: 0x000000,
+            strokeThickness: 2
+          });
+          killsText.anchor.set(0, 0);
+          killsText.x = app.screen.width / 2 + 90;
+          killsText.y = 16;
+          uiContainer.addChild(killsText);
+          killsTextRef.current = killsText;
+        };
+
+        createTopUi();
         
         // Ajouter le conteneur UI au stage (après le monde du jeu pour qu'il soit au-dessus)
         app.stage.addChild(uiContainer);
 
         // Charger le sprite du joueur
         try {
-          const texture = await PIXI.Assets.load('/—Pngtree—knight avatar soldier with shield_23256476.png');
+          const playerTexturePath = playerClassRef.current === 'mage'
+            ? '/magicien.png'
+            : playerClassRef.current === 'ranger'
+              ? '/rodeur.png'
+              : playerClassRef.current === 'templar'
+                ? '/templier_dechu.png'
+              : '/—Pngtree—knight avatar soldier with shield_23256476.png';
+          const texture = await PIXI.Assets.load(playerTexturePath);
           const sprite = new PIXI.Sprite(texture);
           sprite.anchor.set(0.5);
-          sprite.scale.set(0.03); // Taille réduite pour correspondre aux monstres
+          sprite.scale.set(
+            playerClassRef.current === 'mage'
+              ? 0.09
+              : playerClassRef.current === 'ranger'
+                ? 0.225
+                : playerClassRef.current === 'templar'
+                  ? 0.275
+                  : 0.03
+          );
           player.setSprite(sprite);
           gameWorld.addChild(sprite);
           console.log('Sprite du joueur chargé');
@@ -626,16 +1126,19 @@ const Game = () => {
         gameWorld.addChild(playerHitbox);
         console.log('Hitbox du joueur créée');
 
-        // Créer la barre d'expérience au-dessus du joueur
+        // Créer la barre d'expérience dans l'UI (fixe en haut)
         const experienceBar = createExperienceBar(player);
+        experienceBar.isUi = true;
         player.setExperienceBar(experienceBar);
-        gameWorld.addChild(experienceBar);
+        experienceBar.x = 220;
+        experienceBar.y = 14;
+        uiContainer.addChild(experienceBar);
         console.log('Barre d\'expérience créée');
 
         console.log('🎯 Initialisation de l\'arme pour la bataille...');
         // Initialiser l'arme dans le backend ET récupérer les stats
         let weaponStats = {
-          damage: 1,
+          damage: 10,
           hitboxWidth: 50,
           hitboxHeight: 160, // Même valeur que dans initializeWeapons
           rotationSpeed: 0.005,
@@ -664,40 +1167,70 @@ const Game = () => {
           console.log('🛡️  Stats de fallback utilisées:', weaponStats);
         }
 
-        // Créer l'épée qui tourne autour du joueur avec les stats du backend
-        const sword = new Sword(player, weaponStats.radius);
-        sword.damage = weaponStats.damage;
-        sword.hitboxWidth = weaponStats.hitboxWidth;
-        sword.hitboxHeight = weaponStats.hitboxHeight;
-        sword.rotationSpeed = weaponStats.rotationSpeed;
-        swordRef.current = sword;
+        const addSpearInstance = (angleOffset = 0) => {
+          const gameWorldLocal = gameWorldRef.current;
+          if (!playerRef.current || !gameWorldLocal) return null;
 
-        // Charger le sprite de l'épée
-        try {
-          const swordTexture = await PIXI.Assets.load('/epee.png');
-          const swordSprite = new PIXI.Sprite(swordTexture);
-          swordSprite.anchor.set(0.5);
-          swordSprite.scale.set(0.5); // Taille de l'épée agrandie x10 (0.05 * 10 = 0.5)
-          sword.setSprite(swordSprite);
-          gameWorld.addChild(swordSprite);
-          console.log('Épée chargée');
-        } catch (error) {
-          console.log('Erreur chargement épée, création sprite de remplacement');
-          // Sprite de remplacement pour l'épée
-          const fallbackSword = new PIXI.Graphics();
-          fallbackSword.beginFill(0xC0C0C0); // Couleur argent
-          fallbackSword.drawRect(-20, -150, 40, 300); // Forme d'épée agrandie x10
-          fallbackSword.endFill();
-          sword.setSprite(fallbackSword);
-          gameWorld.addChild(fallbackSword);
-          console.log('Sprite de remplacement épée créé');
+          const spear = new Spear(playerRef.current, angleOffset);
+          const baseDamage = spearsRef.current?.[0]?.damage;
+          spear.damage = typeof baseDamage === 'number' && baseDamage > 0 ? baseDamage : 3;
+
+          const spearSprite = createSpearSprite();
+          spear.setSprite(spearSprite);
+          gameWorldLocal.addChild(spearSprite);
+
+          const spearTipHitbox = createHitboxSprite(spear.tipRadius, 0x00ffff, 0.18);
+          spear.setHitboxSprite(spearTipHitbox);
+          gameWorldLocal.addChild(spearTipHitbox);
+
+          spearsRef.current.push(spear);
+          return spear;
+        };
+
+        if (playerClassRef.current === 'knight') {
+          // Créer l'épée qui tourne autour du joueur avec les stats du backend
+          const sword = new Sword(player, weaponStats.radius);
+          sword.damage = weaponStats.damage;
+          sword.hitboxWidth = weaponStats.hitboxWidth;
+          sword.hitboxHeight = weaponStats.hitboxHeight;
+          sword.rotationSpeed = weaponStats.rotationSpeed;
+          swordRef.current = sword;
+          spearsRef.current = [];
+
+          // Charger le sprite de l'épée
+          try {
+            const swordTexture = await PIXI.Assets.load('/epee.png');
+            const swordSprite = new PIXI.Sprite(swordTexture);
+            swordSprite.anchor.set(0.5);
+            swordSprite.scale.set(0.5); // Taille de l'épée agrandie x10 (0.05 * 10 = 0.5)
+            sword.setSprite(swordSprite);
+            gameWorld.addChild(swordSprite);
+            console.log('Épée chargée');
+          } catch (error) {
+            console.log('Erreur chargement épée, création sprite de remplacement');
+            // Sprite de remplacement pour l'épée
+            const fallbackSword = new PIXI.Graphics();
+            fallbackSword.beginFill(0xC0C0C0); // Couleur argent
+            fallbackSword.drawRect(-20, -150, 40, 300); // Forme d'épée agrandie x10
+            fallbackSword.endFill();
+            sword.setSprite(fallbackSword);
+            gameWorld.addChild(fallbackSword);
+            console.log('Sprite de remplacement épée créé');
+          }
+
+          // Créer la hitbox de l'épée (rectangle bleu semi-transparent, plus réaliste)
+          const swordHitbox = createSwordHitboxSprite(sword.hitboxWidth, sword.hitboxHeight, 0x0000ff, 0.2);
+          sword.setHitboxSprite(swordHitbox);
+          gameWorld.addChild(swordHitbox);
+          console.log('Hitbox rectangulaire de l\'épée créée avec dimensions:', sword.hitboxWidth, 'x', sword.hitboxHeight);
+        } else if (playerClassRef.current === 'templar') {
+          swordRef.current = null;
+          spearsRef.current = [];
+          addSpearInstance(0);
+        } else {
+          swordRef.current = null;
+          spearsRef.current = [];
         }
-
-        // Créer la hitbox de l'épée (rectangle bleu semi-transparent, plus réaliste)
-        const swordHitbox = createSwordHitboxSprite(sword.hitboxWidth, sword.hitboxHeight, 0x0000ff, 0.2);
-        sword.setHitboxSprite(swordHitbox);
-        gameWorld.addChild(swordHitbox);
-        console.log('Hitbox rectangulaire de l\'épée créée avec dimensions:', sword.hitboxWidth, 'x', sword.hitboxHeight);
 
         // Gestion des entrées
         const handleKeyDown = (event) => {
@@ -750,14 +1283,15 @@ const Game = () => {
                 break;
             }
 
-            const monster = new Monster(x, y, playerRef.current);
+            const isEpic = Math.random() < (1 / 11);
+            const monster = isEpic ? new EpicMonster(x, y, playerRef.current) : new Monster(x, y, playerRef.current);
             
             // Charger le sprite du monstre avec fallback
             try {
-              const monsterTexture = await PIXI.Assets.load('/monster.png.png');
+              const monsterTexture = await PIXI.Assets.load(isEpic ? '/monstreEpique.png' : '/monster.png.png');
               const monsterSprite = new PIXI.Sprite(monsterTexture);
               monsterSprite.anchor.set(0.5);
-              monsterSprite.scale.set(0.225);
+              monsterSprite.scale.set(isEpic ? 0.28 : 0.225);
               monster.setSprite(monsterSprite);
               gameWorld.addChild(monsterSprite);
               console.log('� Monstre sprite chargé depuis image à', x, y);
@@ -766,7 +1300,7 @@ const Game = () => {
               // Sprite de remplacement pour le monstre (comme avant)
               const fallbackMonster = new PIXI.Graphics();
               // Corps rouge
-              fallbackMonster.beginFill(0xff0000);
+              fallbackMonster.beginFill(isEpic ? 0x9b59b6 : 0xff0000);
               fallbackMonster.drawCircle(0, 0, 90);
               fallbackMonster.endFill();
               // Yeux blancs
@@ -787,6 +1321,11 @@ const Game = () => {
             const monsterHitbox = createHitboxSprite(monster.hitboxRadius, 0xff0000, 0.2);
             monster.setHitboxSprite(monsterHitbox);
             gameWorld.addChild(monsterHitbox);
+
+            const monsterHealthBar = createMonsterHealthBar(monster);
+            monster.healthBar = monsterHealthBar;
+            gameWorld.addChild(monsterHealthBar);
+            updateMonsterHealthBar(monster);
             
             monstersRef.current.push(monster);
             console.log('� Monstre créé à la position:', x, y);
@@ -802,9 +1341,10 @@ const Game = () => {
             
             // Configuration des couleurs
             const powerupColors = {
-              speed_boost: 0xFFD700,
-              rotation_speed: 0xFF6B6B,
-              size_boost: 0x4ECDC4
+              player_speed: 0xFFD700,
+              fireball_size: 0xFF6B6B,
+              damage_bonus: 0x4ECDC4,
+              multi_shot: 0xA78BFA
             };
             
             // Créer le sprite du powerup
@@ -834,10 +1374,14 @@ const Game = () => {
         // Pas de monstre ni powerup au démarrage - ils apparaîtront avec les timers
         
         // Spawn des monstres toutes les 3 secondes (pour test)
-        const monsterSpawnInterval = setInterval(createMonster, 3000);
+        const monsterSpawnInterval = setInterval(() => {
+          if (modalOpenRef.current) return;
+          createMonster();
+        }, 3000);
 
         // Spawn des powerups toutes les 30 secondes (moins de spam)
         const powerupSpawnInterval = setInterval(() => {
+          if (modalOpenRef.current) return;
           // Limiter à 3 powerups max sur la map
           if (powerupsRef.current.length < 3) {
             // Position aléatoire sur la map
@@ -845,7 +1389,9 @@ const Game = () => {
             const y = Math.random() * MAP_HEIGHT;
             
             // Type de powerup aléatoire
-            const types = ['speed_boost', 'rotation_speed', 'size_boost'];
+            const types = playerClassRef.current === 'templar'
+              ? ['player_speed', 'damage_bonus', 'spear_count', 'attack_speed']
+              : ['player_speed', 'fireball_size', 'damage_bonus', 'multi_shot'];
             const randomType = types[Math.floor(Math.random() * types.length)];
             
             createPowerup(x, y, randomType);
@@ -883,6 +1429,9 @@ const Game = () => {
 
         // Boucle de jeu avec monstres, collisions, caméra et épée
         const gameLoop = () => {
+          if (modalOpenRef.current) {
+            return;
+          }
           if (playerRef.current && playerRef.current.health > 0) {
             // Mettre à jour le joueur avec les limites de la map
             playerRef.current.update(keysRef.current, MAP_WIDTH, MAP_HEIGHT);
@@ -890,6 +1439,80 @@ const Game = () => {
             // Mettre à jour l'épée avec les paramètres pour la mise à jour dynamique
             if (swordRef.current) {
               swordRef.current.update(gameWorld, createSwordHitboxSprite);
+            }
+
+            if (spearsRef.current && spearsRef.current.length > 0) {
+              spearsRef.current.forEach((s) => {
+                if (s) s.update(monstersRef.current);
+              });
+            }
+
+            // Magicien / Rodeur: tirer sur le monstre le plus proche
+            if (playerClassRef.current === 'mage' || playerClassRef.current === 'ranger') {
+              const nowMsMage = Date.now();
+              const baseMageCooldownMs = 1950;
+              const rotationMultiplier = Math.max(0.25, Number(playerRef.current?.rotationSpeedMultiplier) || 1);
+              const mageCooldownMs = Math.max(120, Math.round(baseMageCooldownMs / rotationMultiplier));
+              if (nowMsMage - mageLastShotAtRef.current >= mageCooldownMs) {
+                let best = null;
+                let bestDist = Infinity;
+                for (const m of monstersRef.current) {
+                  if (!m || !m.isAlive) continue;
+                  const dx = m.x - playerRef.current.x;
+                  const dy = m.y - playerRef.current.y;
+                  const d = Math.sqrt(dx * dx + dy * dy);
+                  if (d < bestDist) {
+                    bestDist = d;
+                    best = m;
+                  }
+                }
+
+                const attackRange = playerClassRef.current === 'ranger' ? 700 : 520;
+                if (best && bestDist > 0 && bestDist <= attackRange) {
+                  const dx = best.x - playerRef.current.x;
+                  const dy = best.y - playerRef.current.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  const speed = playerClassRef.current === 'ranger' ? 6.2 : 4.2;
+                  const sizeMultiplier = playerRef.current?.fireballSizeMultiplier || 1;
+                  const damageMultiplier = playerRef.current?.damageMultiplier || 1;
+
+                  const count = Math.max(1, Math.min(9, Number(playerRef.current?.projectilesPerShot) || 1));
+                  const baseAngle = Math.atan2(dy, dx);
+                  const spread = count === 1 ? 0 : 0.18;
+
+                  for (let i = 0; i < count; i += 1) {
+                    const offset = (i - (count - 1) / 2) * spread;
+                    const angle = baseAngle + offset;
+                    const vx = Math.cos(angle) * speed;
+                    const vy = Math.sin(angle) * speed;
+
+                    if (playerClassRef.current === 'ranger') {
+                      const arrow = new RangerArrow(playerRef.current.x, playerRef.current.y, vx, vy, sizeMultiplier, damageMultiplier, 720);
+                      const arrowSprite = createRangerProjectileSprite();
+                      try {
+                        arrowSprite.scale.set(arrowSprite.scale.x * sizeMultiplier, arrowSprite.scale.y * sizeMultiplier);
+                      } catch (e) {
+                        // ignore
+                      }
+                      arrow.setSprite(arrowSprite);
+                      gameWorld.addChild(arrowSprite);
+                      playerProjectilesRef.current.push(arrow);
+                    } else {
+                      const fireball = new PlayerProjectile(playerRef.current.x, playerRef.current.y, vx, vy, sizeMultiplier, damageMultiplier);
+                      const fireballSprite = createPlayerProjectileSprite();
+                      try {
+                        fireballSprite.scale.set(fireballSprite.scale.x * sizeMultiplier, fireballSprite.scale.y * sizeMultiplier);
+                      } catch (e) {
+                        // ignore
+                      }
+                      fireball.setSprite(fireballSprite);
+                      gameWorld.addChild(fireballSprite);
+                      playerProjectilesRef.current.push(fireball);
+                    }
+                  }
+                  mageLastShotAtRef.current = nowMsMage;
+                }
+              }
             }
             
             // Mettre à jour tous les powerups (sans spam de logs)
@@ -908,23 +1531,91 @@ const Game = () => {
               }
             });
 
+            // Projectiles du joueur (Magicien / Rodeur)
+            playerProjectilesRef.current.forEach((p) => {
+              if (!p.isAlive) return;
+
+              p.update(MAP_WIDTH, MAP_HEIGHT);
+              if (!p.isAlive) return;
+
+              for (const m of monstersRef.current) {
+                if (!m || !m.isAlive) continue;
+                if (p.checkCollisionMonster(m)) {
+                  if (p instanceof RangerArrow) {
+                    if (p.hitMonsterIds && p.hitMonsterIds.has(m)) {
+                      continue;
+                    }
+                    if (p.hitMonsterIds) {
+                      p.hitMonsterIds.add(m);
+                    }
+                  }
+
+                  const isDead = m.takeDamage(p.damage, Date.now());
+                  if (!(p instanceof RangerArrow)) {
+                    p.destroy();
+                  }
+                  if (isDead) {
+                    killsRef.current += 1;
+                    if (m instanceof EpicMonster) {
+                      epicKillsRef.current += 1;
+                    }
+
+                    const leveledUp = playerRef.current.gainExperience(25);
+                    if (leveledUp) {
+                      setCurrentPowerup({ type: 'level_up', isLevelUp: true });
+                      setShowPowerupSelector(true);
+                      powerupCollisionDetectedRef.current = true;
+                    }
+                  }
+                  break;
+                }
+              }
+            });
+
             // Mettre à jour la caméra pour suivre le joueur
             updateCamera();
 
             // Mettre à jour la barre d'expérience
             updateExperienceBar(playerRef.current);
 
+            const nowMs = Date.now();
+            const elapsedSeconds = Math.max(0, Math.floor((nowMs - gameStartAtRef.current) / 1000));
+            if (timerTextRef.current) {
+              const m = Math.floor(elapsedSeconds / 60);
+              const s = elapsedSeconds % 60;
+              const mm = String(m).padStart(2, '0');
+              const ss = String(s).padStart(2, '0');
+              timerTextRef.current.text = `${mm}:${ss}`;
+              timerTextRef.current.x = app.screen.width / 2;
+            }
+            if (killsTextRef.current) {
+              killsTextRef.current.text = `Kills: ${killsRef.current}`;
+              killsTextRef.current.x = app.screen.width / 2 + 90;
+            }
+
             // Mettre à jour tous les monstres (avec évitement de superposition)
             monstersRef.current.forEach((monster, index) => {
               if (monster.isAlive) {
                 // Passer la liste de tous les monstres pour éviter les superpositions
                 monster.update(monstersRef.current);
+
+                updateMonsterHealthBar(monster);
+
+                if (monster instanceof EpicMonster) {
+                  monster.tryShoot(projectilesRef, gameWorld, createProjectileSprite, Date.now());
+                }
                 
                 // Vérifier collision avec l'épée
                 if (swordRef.current && swordRef.current.checkCollision(monster)) {
-                  const isDead = monster.takeDamage(swordRef.current.damage);
+                  const damageMultiplier = playerRef.current?.damageMultiplier || 1;
+                  const damage = swordRef.current.damage * Math.max(0.25, Number(damageMultiplier) || 1);
+                  const isDead = monster.takeDamage(damage, Date.now());
                   if (isDead) {
                     console.log('Monstre tué par l\'épée!');
+                    killsRef.current += 1;
+                    if (monster instanceof EpicMonster) {
+                      epicKillsRef.current += 1;
+                    }
                     // Donner de l'expérience au joueur
                     const leveledUp = playerRef.current.gainExperience(25);
                     if (leveledUp) {
@@ -936,18 +1627,92 @@ const Game = () => {
                     }
                   }
                 }
+
+                if (spearsRef.current && spearsRef.current.length > 0) {
+                  for (const spear of spearsRef.current) {
+                    if (!spear) continue;
+                    if (spear.checkCollision(monster)) {
+                      const damageMultiplier = playerRef.current?.damageMultiplier || 1;
+                      const damage = spear.damage * Math.max(0.25, Number(damageMultiplier) || 1);
+                      const isDead = monster.takeDamage(damage, Date.now());
+                      if (isDead) {
+                        killsRef.current += 1;
+                        if (monster instanceof EpicMonster) {
+                          epicKillsRef.current += 1;
+                        }
+                        const leveledUp = playerRef.current.gainExperience(25);
+                        if (leveledUp) {
+                          setCurrentPowerup({ type: 'level_up', isLevelUp: true });
+                          setShowPowerupSelector(true);
+                          powerupCollisionDetectedRef.current = true;
+                        }
+                      }
+                      break;
+                    }
+                  }
+                }
                 
                 // Vérifier collision avec le joueur (mais ne plus détruire le monstre)
                 if (monster.checkCollision(playerRef.current)) {
                   // Le joueur prend des dégâts avec recul
-                  const isDead = playerRef.current.takeDamage(1, monster.x, monster.y);
+                  const isDead = playerRef.current.takeDamage(5, monster.x, monster.y);
                   updateHealthDisplay();
                   
                   // Ne plus détruire le monstre au contact du joueur
                   
                   if (isDead) {
                     console.log('Game Over!');
-                    // TODO: Ajouter écran de game over
+                    if (!gameOverShownRef.current) {
+                      gameOverShownRef.current = true;
+                      const timeSeconds = Math.max(1, Math.floor((Date.now() - gameStartAtRef.current) / 1000));
+                      const kills = killsRef.current;
+                      setFinalTimeSeconds(timeSeconds);
+                      setFinalKills(kills);
+                      setFinalScore(kills * timeSeconds);
+                      setShowGameOver(true);
+
+                      const runMaxLevel = playerRef.current?.level || 1;
+                      try {
+                        axios.post('/stats/run', { kills, epicKills: epicKillsRef.current, timeSeconds, maxLevel: runMaxLevel }).catch((e) => {
+                          console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                        });
+                      } catch (e) {
+                        console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                      }
+                    }
+                  }
+                }
+              }
+            });
+
+            projectilesRef.current.forEach((projectile) => {
+              if (!projectile.isAlive) return;
+
+              projectile.update(MAP_WIDTH, MAP_HEIGHT);
+
+              if (projectile.isAlive && projectile.checkCollision(playerRef.current)) {
+                const isDead = playerRef.current.takeDamage(projectile.damage, projectile.x, projectile.y);
+                updateHealthDisplay();
+                projectile.destroy();
+                if (isDead) {
+                  console.log('Game Over!');
+                  if (!gameOverShownRef.current) {
+                    gameOverShownRef.current = true;
+                    const timeSeconds = Math.max(1, Math.floor((Date.now() - gameStartAtRef.current) / 1000));
+                    const kills = killsRef.current;
+                    setFinalTimeSeconds(timeSeconds);
+                    setFinalKills(kills);
+                    setFinalScore(kills * timeSeconds);
+                    setShowGameOver(true);
+
+                    const runMaxLevel = playerRef.current?.level || 1;
+                    try {
+                      axios.post('/stats/run', { kills, epicKills: epicKillsRef.current, timeSeconds, maxLevel: runMaxLevel }).catch((e) => {
+                        console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                      });
+                    } catch (e) {
+                      console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                    }
                   }
                 }
               }
@@ -958,6 +1723,10 @@ const Game = () => {
 
             // Nettoyer les monstres morts
             monstersRef.current = monstersRef.current.filter(monster => monster.isAlive);
+
+            projectilesRef.current = projectilesRef.current.filter(projectile => projectile.isAlive);
+
+            playerProjectilesRef.current = playerProjectilesRef.current.filter((p) => p.isAlive);
           }
         };
 
@@ -1001,26 +1770,90 @@ const Game = () => {
     console.log('Powerup sélectionné:', powerupType);
     
     if (!playerRef.current || !currentPowerup) return;
+
+    const currentClass = playerClassRef.current;
+    const isMeleeClass = currentClass === 'knight' || currentClass === 'templar';
+    const isTemplar = currentClass === 'templar';
+
+    const addSpearInstanceFromPowerup = (angleOffset = 0) => {
+      const gameWorld = gameWorldRef.current;
+      if (!gameWorld || !playerRef.current) return;
+      const spear = new Spear(playerRef.current, angleOffset);
+      const baseDamage = spearsRef.current?.[0]?.damage;
+      spear.damage = typeof baseDamage === 'number' && baseDamage > 0 ? baseDamage : 3;
+
+      const spearSprite = createSpearSprite();
+      spear.setSprite(spearSprite);
+      gameWorld.addChild(spearSprite);
+
+      const spearTipHitbox = createHitboxSprite(spear.tipRadius, 0x00ffff, 0.18);
+      spear.setHitboxSprite(spearTipHitbox);
+      gameWorld.addChild(spearTipHitbox);
+
+      spearsRef.current.push(spear);
+    };
     
     // Appliquer l'effet du powerup
     switch(powerupType) {
-      case 'speed_boost':
+      case 'player_speed':
         playerRef.current.speedMultiplier *= 1.5; // +50% vitesse
         console.log('Speed multiplier:', playerRef.current.speedMultiplier);
         break;
-      case 'rotation_speed':
-        playerRef.current.rotationSpeedMultiplier *= 2; // +100% vitesse rotation
-        console.log('Rotation speed multiplier:', playerRef.current.rotationSpeedMultiplier);
-        break;
-      case 'size_boost':
-        playerRef.current.sizeMultiplier *= 1.5; // +50% taille
-        if (playerRef.current.sprite) {
-          playerRef.current.sprite.scale.set(
-            playerRef.current.sprite.scale.x * 1.5,
-            playerRef.current.sprite.scale.y * 1.5
-          );
+      case 'fireball_size':
+        if (isMeleeClass) {
+          if (swordRef.current) {
+            swordRef.current.hitboxWidth = Math.round((Number(swordRef.current.hitboxWidth) || 0) * 1.5);
+            swordRef.current.hitboxHeight = Math.round((Number(swordRef.current.hitboxHeight) || 0) * 1.5);
+          }
+          if (spearsRef.current && spearsRef.current.length > 0) {
+            const gameWorld = gameWorldRef.current;
+            spearsRef.current.forEach((s) => {
+              if (!s) return;
+              s.tipRadius = (Number(s.tipRadius) || 22) * 1.5;
+              s.thrustDistance = (Number(s.thrustDistance) || 75) * 1.2;
+              if (gameWorld) {
+                if (s.hitboxSprite && s.hitboxSprite.parent) {
+                  s.hitboxSprite.parent.removeChild(s.hitboxSprite);
+                }
+                const newTip = createHitboxSprite(s.tipRadius, 0x00ffff, 0.18);
+                s.setHitboxSprite(newTip);
+                gameWorld.addChild(newTip);
+              }
+            });
+          }
+        } else {
+          playerRef.current.fireballSizeMultiplier *= 1.5;
+          console.log('Fireball size multiplier:', playerRef.current.fireballSizeMultiplier);
         }
-        console.log('Size multiplier:', playerRef.current.sizeMultiplier);
+        break;
+      case 'damage_bonus':
+        playerRef.current.damageMultiplier *= 1.5;
+        console.log('Damage multiplier:', playerRef.current.damageMultiplier);
+        break;
+      case 'multi_shot':
+        if (isMeleeClass) {
+          playerRef.current.rotationSpeedMultiplier *= 1.25;
+          console.log('Attack speed multiplier:', playerRef.current.rotationSpeedMultiplier);
+        } else {
+          playerRef.current.projectilesPerShot = Math.max(1, Math.min(9, (Number(playerRef.current.projectilesPerShot) || 1) + 1));
+          console.log('Projectiles per shot:', playerRef.current.projectilesPerShot);
+        }
+        break;
+      case 'spear_count':
+        if (isTemplar) {
+          const currentCount = Array.isArray(spearsRef.current) ? spearsRef.current.length : 0;
+          const next = Math.min(6, currentCount + 1);
+          if (next > currentCount) {
+            const spread = next === 1 ? 0 : 0.22;
+            const angleOffset = (currentCount - (next - 1) / 2) * spread;
+            addSpearInstanceFromPowerup(angleOffset);
+          }
+        }
+        break;
+      case 'attack_speed':
+        if (isTemplar) {
+          playerRef.current.rotationSpeedMultiplier *= 1.25;
+        }
         break;
       default:
         console.warn('Type de powerup inconnu:', powerupType);
@@ -1053,6 +1886,10 @@ const Game = () => {
     console.log('showPowerupSelector changed:', showPowerupSelector);
   }, [showPowerupSelector]);
 
+  useEffect(() => {
+    modalOpenRef.current = !!showPowerupSelector || !!showGameOver;
+  }, [showPowerupSelector, showGameOver]);
+
   return (
     <div style={{ 
       position: 'fixed',
@@ -1071,7 +1908,66 @@ const Game = () => {
         <PowerupSelector 
           onSelect={handlePowerupSelect}
           onCancel={handlePowerupCancel}
+          playerClass={playerClassRef.current}
         />
+      )}
+      {showGameOver && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000
+        }}>
+          <div style={{
+            width: 'min(520px, 92vw)',
+            backgroundColor: '#0f0f0f',
+            border: '1px solid rgba(212, 175, 55, 0.35)',
+            borderRadius: '10px',
+            padding: '20px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.6)'
+          }}>
+            <h2 style={{
+              margin: '0 0 10px 0',
+              color: '#d4af37',
+              fontFamily: 'serif'
+            }}>
+              Game Over
+            </h2>
+            <div style={{
+              color: '#e6e6e6',
+              fontFamily: 'monospace',
+              lineHeight: 1.5
+            }}>
+              <div>Temps: {finalTimeSeconds}s</div>
+              <div>Ennemis tués: {finalKills}</div>
+              <div style={{ marginTop: '10px', fontSize: '18px' }}>
+                Score: {finalScore}
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button
+                onClick={() => navigate('/')}
+                style={{
+                  padding: '10px 14px',
+                  backgroundColor: '#d4af37',
+                  color: '#1a1a1a',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                Retour à l'accueil
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       <div 
         ref={gameRef} 
@@ -1081,42 +1977,6 @@ const Game = () => {
           position: 'relative'
         }}
       />
-      <div style={{ 
-        position: 'absolute',
-        top: '20px',
-        left: '20px',
-        color: '#cccccc',
-        fontFamily: 'monospace',
-        zIndex: 1001,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        padding: '10px',
-        borderRadius: '5px'
-      }}>
-        <h3 style={{ color: '#d4af37', margin: '0 0 10px 0', fontFamily: 'serif' }}>
-          Last Realm - Nouvelle Carte
-        </h3>
-        <p style={{ margin: '5px 0', fontSize: '12px' }}>
-          <strong>Utilisez les flèches ↑↓←→ pour vous déplacer</strong>
-        </p>
-        <p style={{ margin: '5px 0', fontSize: '10px', opacity: 0.8 }}>
-          Collectez les powerups (carrés colorés) pour obtenir des bonus!
-        </p>
-        <button 
-          onClick={() => navigate('/dashboard')}
-          style={{
-            padding: '5px 10px',
-            backgroundColor: '#d4af37',
-            color: '#1a1a1a',
-            border: 'none',
-            borderRadius: '3px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: '12px'
-          }}
-        >
-          ← Dashboard
-        </button>
-      </div>
     </div>
   );
 };
