@@ -146,7 +146,7 @@ const Dashboard = () => {
       </main>
 
       <footer className="dashboard-footer">
-        <p>&copy; 2024 Last Realm - Survivez aux ténèbres</p>
+        <p>&copy; 2025 Last Realm - Survivez aux ténèbres</p>
       </footer>
 
       {showClassModal && (
