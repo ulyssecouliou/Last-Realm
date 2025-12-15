@@ -88,12 +88,12 @@ try {
 # etape 5: Construire les images Docker
 Write-Host ""
 Write-Step "Construction des images Docker..."
-Write-Host "Cela peut prendre quelques minutes la première fois..." -ForegroundColor Yellow
+Write-Host "Cela peut prendre quelques minutes la premiere fois..." -ForegroundColor Yellow
 Write-Host ""
 
 $buildOutput = docker-compose build 2>&1
 if ($LASTEXITCODE -eq 0) {
-    Write-SuccessStep "Images Docker construites avec succès"
+    Write-SuccessStep "Images Docker construites avec succes"
 } else {
     Write-ErrorStep "Erreur lors de la construction des images"
     Write-Host $buildOutput -ForegroundColor Red
@@ -107,7 +107,7 @@ Write-Host ""
 
 $upOutput = docker-compose up -d 2>&1
 if ($LASTEXITCODE -eq 0) {
-    Write-SuccessStep "Containers demarres avec succès"
+    Write-SuccessStep "Containers demarres avec succes"
 } else {
     Write-ErrorStep "Erreur lors du demarrage des containers"
     Write-Host $upOutput -ForegroundColor Red
@@ -132,9 +132,9 @@ Start-Sleep -Seconds 3
 
 $backendLogs = docker-compose logs backend 2>&1
 if ($backendLogs -match "Server is running") {
-    Write-SuccessStep "Backend demarre avec succès"
+    Write-SuccessStep "Backend demarre avec succes"
 } else {
-    Write-Host "Avertissement: Le backend pourrait ne pas être complètement demarre" -ForegroundColor Yellow
+    Write-Host "Avertissement: Le backend pourrait ne pas être completement demarre" -ForegroundColor Yellow
     Write-Host "Logs du backend:" -ForegroundColor Yellow
     docker-compose logs backend
 }
@@ -145,7 +145,7 @@ Write-Host "================================" -ForegroundColor Cyan
 Write-Host "  ✓ Deploiement termine!" -ForegroundColor Green
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "🌐 Accès aux services:" -ForegroundColor Cyan
+Write-Host "🌐 Acces aux services:" -ForegroundColor Cyan
 Write-Host "   Frontend:  http://localhost:3000" -ForegroundColor White
 Write-Host "   Backend:   http://localhost:5000" -ForegroundColor White
 Write-Host "   PostgreSQL: localhost:5432" -ForegroundColor White
