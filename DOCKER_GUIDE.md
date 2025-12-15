@@ -7,7 +7,44 @@ Ce guide explique comment utiliser Docker pour déployer l'application Last Real
 - Docker Desktop installé sur votre machine
 - Docker Compose (inclus avec Docker Desktop)
 
-## 🚀 Démarrage rapide
+## 🚀 Démarrage rapide (Recommandé)
+
+### Utiliser les scripts automatiques
+
+**Pour Windows :**
+
+Double-cliquez sur `start-docker.bat` ou ouvrez PowerShell et exécutez :
+```powershell
+.\start-docker.ps1
+```
+
+Le script va :
+- ✅ Vérifier si Docker est installé
+- ✅ Démarrer Docker automatiquement s'il n'est pas lancé
+- ✅ Créer le fichier `.env` depuis `.env.example`
+- ✅ Construire les images Docker
+- ✅ Démarrer tous les containers
+- ✅ Afficher les URLs d'accès
+- ✅ Proposer d'ouvrir l'application dans le navigateur
+
+**Pour arrêter :**
+
+Double-cliquez sur `stop-docker.bat` ou exécutez :
+```powershell
+.\stop-docker.ps1
+```
+
+### Nouveautés des scripts v2.0
+
+✨ **Améliorations** :
+- Détection automatique de Docker Desktop (plusieurs emplacements testés)
+- Démarrage automatique de Docker s'il n'est pas lancé
+- Meilleure gestion des erreurs avec messages clairs
+- Attente intelligente du démarrage de Docker (jusqu'à 2 minutes)
+- Pause automatique pour lire les messages d'erreur
+- Messages colorés et informatifs
+
+## 🚀 Démarrage manuel
 
 ### 1. Configuration des variables d'environnement
 
