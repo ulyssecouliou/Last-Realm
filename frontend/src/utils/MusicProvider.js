@@ -4,7 +4,8 @@ const MusicContext = createContext(null);
 
 const TRACKS = {
   menu: '/music/menu.mp3',
-  game: '/music/game.mp3'
+  game: '/music/game.mp3',
+  boss: '/music/ost_cynthia.mp3'
 };
 
 export const MusicProvider = ({ children }) => {
@@ -34,7 +35,7 @@ export const MusicProvider = ({ children }) => {
   const setMusicMode = useCallback(
     async (nextMode) => {
       const audio = audioRef.current;
-      const key = nextMode === 'game' ? 'game' : 'menu';
+      const key = nextMode === 'boss' ? 'boss' : nextMode === 'game' ? 'game' : 'menu';
       if (!audio) return;
 
       setMode(key);

@@ -14,12 +14,18 @@ import './App.css';
 
 const MusicRouteSync = () => {
   const location = useLocation();
-  const { setMusicMode } = useMusic();
+  const { setMusicMode, mode } = useMusic();
 
   useEffect(() => {
     const isGame = location.pathname === '/game';
-    setMusicMode(isGame ? 'game' : 'menu');
-  }, [location.pathname, setMusicMode]);
+    if (isGame) {
+      if (mode !== 'boss') {
+        setMusicMode('game');
+      }
+    } else {
+      setMusicMode('menu');
+    }
+  }, [location.pathname, mode, setMusicMode]);
 
   return null;
 };

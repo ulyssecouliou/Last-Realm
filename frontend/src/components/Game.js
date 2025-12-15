@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as PIXI from 'pixi.js';
 import axios from 'axios';
 import PowerupSelector from './PowerupSelector';
+import { useMusic } from '../utils/MusicProvider';
 
   // Classe Player avec système de vie
 class Player {
@@ -471,6 +472,18 @@ class EpicMonster extends Monster {
   }
 }
 
+class BossMonster extends Monster {
+  constructor(x, y, targetPlayer) {
+    super(x, y, targetPlayer);
+    this.health = 300;
+    this.maxHealth = 300;
+    this.hitboxRadius = 72;
+    this.speed = 0.16;
+    this.lastLaserAt = 0;
+    this.laserCooldownMs = 750;
+  }
+}
+
 // Classe Sword (épée qui tourne autour du joueur)
 class Sword {
   constructor(player, radius = 120) {
@@ -621,6 +634,10 @@ const Game = () => {
   const gameRef = useRef(null);
   const appRef = useRef(null);
   const playerRef = useRef(null);
+  const gameModeRef = useRef('normal');
+  const [isBossMode, setIsBossMode] = useState(false);
+  const [bossModePicksDone, setBossModePicksDone] = useState(0);
+  const bossModePicksLeftRef = useRef(0);
   const keysRef = useRef({ left: false, right: false, up: false, down: false });
   const monstersRef = useRef([]);
   const projectilesRef = useRef([]);
@@ -630,6 +647,8 @@ const Game = () => {
   const rangerProjectileTextureRef = useRef(null);
   const spearTextureRef = useRef(null);
   const gameStartAtRef = useRef(0);
+  const pausedAtRef = useRef(null);
+  const pausedTotalMsRef = useRef(0);
   const killsRef = useRef(0);
   const epicKillsRef = useRef(0);
   const gameOverShownRef = useRef(false);
@@ -645,6 +664,19 @@ const Game = () => {
   const cameraRef = useRef({ x: 0, y: 0 });
   const backgroundRef = useRef(null);
   const powerupsRef = useRef([]);
+  const enemyDamageMultiplierRef = useRef(1);
+  const enemySpeedMultiplierRef = useRef(1);
+  const enemySpawnMultiplierRef = useRef(1);
+  const waveAppliedRef = useRef({ damageSteps: 0, spawnSteps: 0, speedSteps: 0, epicCyclesDone: new Set(), bossDone: false });
+  const bossRef = useRef(null);
+  const createBossRef = useRef(null);
+  const lasersRef = useRef([]);
+  const bossLaserSideIndexRef = useRef(0);
+  const bossTextureRef = useRef(null);
+  const laserTextureRef = useRef(null);
+  const bossHudRef = useRef(null);
+  const waveNotificationTextRef = useRef(null);
+  const waveNotificationUntilRef = useRef(0);
   const [showPowerupSelector, setShowPowerupSelector] = useState(false);
   const [currentPowerup, setCurrentPowerup] = useState(null);
   const [showGameOver, setShowGameOver] = useState(false);
@@ -655,6 +687,7 @@ const Game = () => {
   const powerupCollisionDetectedRef = useRef(false);
   const gameWorldRef = useRef(null);
   const navigate = useNavigate();
+  const { setMusicMode } = useMusic();
 
   // Constantes de la map (zoom x4 de la taille de base)
   const MAP_WIDTH = 2400; // 4x plus grande que 600x600
@@ -877,11 +910,16 @@ const Game = () => {
     try {
       const params = new URLSearchParams(window.location.search);
       const fromQuery = params.get('class');
+      const modeQuery = params.get('mode');
+      gameModeRef.current = modeQuery === 'boss' ? 'boss' : 'normal';
+      setIsBossMode(gameModeRef.current === 'boss');
       const fromStorage = localStorage.getItem('lastrealm_player_class');
       const raw = (fromQuery || fromStorage || 'knight');
       playerClassRef.current = raw === 'mage' ? 'mage' : raw === 'ranger' ? 'ranger' : raw === 'templar' ? 'templar' : 'knight';
     } catch (e) {
       playerClassRef.current = 'knight';
+      gameModeRef.current = 'normal';
+      setIsBossMode(false);
     }
     
     // Éviter la double initialisation
@@ -919,6 +957,18 @@ const Game = () => {
           rangerProjectileTextureRef.current = await PIXI.Assets.load('/fleche.png');
         } catch (error) {
           rangerProjectileTextureRef.current = null;
+        }
+
+        try {
+          bossTextureRef.current = await PIXI.Assets.load('/BOSS.png');
+        } catch (error) {
+          bossTextureRef.current = null;
+        }
+
+        try {
+          laserTextureRef.current = await PIXI.Assets.load('/lazer-beam.png');
+        } catch (error) {
+          laserTextureRef.current = null;
         }
 
         try {
@@ -1066,6 +1116,58 @@ const Game = () => {
           uiContainer.addChild(timerText);
           timerTextRef.current = timerText;
 
+          const bossHud = new PIXI.Container();
+          bossHud.x = app.screen.width / 2;
+          bossHud.y = 46;
+
+          const bossName = new PIXI.Text('Créateur de la brume', {
+            fontFamily: 'Arial',
+            fontSize: 18,
+            fill: 0xffd700,
+            stroke: 0x000000,
+            strokeThickness: 2
+          });
+          bossName.anchor.set(0.5, 0);
+          bossName.x = 0;
+          bossName.y = 0;
+
+          const barWidth = 320;
+          const barHeight = 14;
+          const barY = 24;
+
+          const bossBarBg = new PIXI.Graphics();
+          bossBarBg.beginFill(0x111111, 0.8);
+          bossBarBg.drawRoundedRect(-barWidth / 2, barY, barWidth, barHeight, 8);
+          bossBarBg.endFill();
+          bossBarBg.lineStyle(2, 0xffd700, 0.55);
+          bossBarBg.drawRoundedRect(-barWidth / 2, barY, barWidth, barHeight, 8);
+
+          const bossBarFill = new PIXI.Graphics();
+          bossBarFill.beginFill(0xff2d2d, 0.95);
+          bossBarFill.drawRoundedRect(-barWidth / 2, barY, barWidth, barHeight, 8);
+          bossBarFill.endFill();
+
+          bossHud.addChild(bossBarBg);
+          bossHud.addChild(bossBarFill);
+          bossHud.addChild(bossName);
+          bossHud.visible = false;
+
+          uiContainer.addChild(bossHud);
+          bossHudRef.current = { container: bossHud, fill: bossBarFill, width: barWidth, height: barHeight, barY };
+
+          const waveText = new PIXI.Text('', {
+            fontFamily: 'Arial',
+            fontSize: 20,
+            fill: 0xff4444,
+            stroke: 0x000000,
+            strokeThickness: 3
+          });
+          waveText.anchor.set(0.5, 0);
+          waveText.x = app.screen.width / 2;
+          waveText.y = 74;
+          uiContainer.addChild(waveText);
+          waveNotificationTextRef.current = waveText;
+
           const killsText = new PIXI.Text('Kills: 0', {
             fontFamily: 'Arial',
             fontSize: 22,
@@ -1101,7 +1203,7 @@ const Game = () => {
             playerClassRef.current === 'mage'
               ? 0.09
               : playerClassRef.current === 'ranger'
-                ? 0.225
+                ? 0.1125
                 : playerClassRef.current === 'templar'
                   ? 0.275
                   : 0.03
@@ -1258,8 +1360,9 @@ const Game = () => {
         window.addEventListener('keyup', handleKeyUp);
 
         // Fonction pour créer un monstre
-        const createMonster = async () => {
+        const createMonster = async (options = {}) => {
           try {
+            const { forceEpic = false, forceNormal = false } = options;
             // Position aléatoire sur les bords de la map
             const side = Math.floor(Math.random() * 4);
             let x, y;
@@ -1283,8 +1386,9 @@ const Game = () => {
                 break;
             }
 
-            const isEpic = Math.random() < (1 / 11);
+            const isEpic = forceNormal ? false : (forceEpic ? true : (Math.random() < (1 / 11)));
             const monster = isEpic ? new EpicMonster(x, y, playerRef.current) : new Monster(x, y, playerRef.current);
+            monster.speed *= Math.max(0.1, Number(enemySpeedMultiplierRef.current) || 1);
             
             // Charger le sprite du monstre avec fallback
             try {
@@ -1334,6 +1438,121 @@ const Game = () => {
           }
         };
 
+        const createBoss = async () => {
+          try {
+            if (bossRef.current && bossRef.current.isAlive) return;
+
+            setMusicMode('boss');
+
+            const side = Math.floor(Math.random() * 4);
+            let x, y;
+            switch (side) {
+              case 0:
+                x = Math.random() * MAP_WIDTH;
+                y = -80;
+                break;
+              case 1:
+                x = MAP_WIDTH + 80;
+                y = Math.random() * MAP_HEIGHT;
+                break;
+              case 2:
+                x = Math.random() * MAP_WIDTH;
+                y = MAP_HEIGHT + 80;
+                break;
+              default:
+                x = -80;
+                y = Math.random() * MAP_HEIGHT;
+                break;
+            }
+
+            const boss = new BossMonster(x, y, playerRef.current);
+            boss.speed *= Math.max(0.1, Number(enemySpeedMultiplierRef.current) || 1);
+
+            if (bossTextureRef.current) {
+              const sprite = new PIXI.Sprite(bossTextureRef.current);
+              sprite.anchor.set(0.5);
+              sprite.scale.set(0.33);
+              boss.setSprite(sprite);
+              gameWorld.addChild(sprite);
+            } else {
+              const fallback = new PIXI.Graphics();
+              fallback.beginFill(0x4b5563, 1);
+              fallback.drawCircle(0, 0, 110);
+              fallback.endFill();
+              fallback.lineStyle(6, 0xffd700, 1);
+              fallback.drawCircle(0, 0, 110);
+              boss.setSprite(fallback);
+              gameWorld.addChild(fallback);
+            }
+
+            const bossHitbox = createHitboxSprite(boss.hitboxRadius, 0xffd700, 0.18);
+            boss.setHitboxSprite(bossHitbox);
+            gameWorld.addChild(bossHitbox);
+
+            const bossHealthBar = createMonsterHealthBar(boss);
+            boss.healthBar = bossHealthBar;
+            gameWorld.addChild(bossHealthBar);
+            updateMonsterHealthBar(boss);
+
+            bossRef.current = boss;
+            monstersRef.current.push(boss);
+          } catch (e) {
+            console.error('Erreur création boss:', e);
+          }
+        };
+
+        createBossRef.current = createBoss;
+
+        const createLaserAttack = (forcedSide = null) => {
+          const player = playerRef.current;
+          if (!player) return;
+
+          const side = typeof forcedSide === 'number' ? forcedSide : Math.floor(Math.random() * 4);
+          let sx = 0;
+          let sy = 0;
+          if (side === 0) {
+            sx = Math.random() * MAP_WIDTH;
+            sy = -120;
+          } else if (side === 1) {
+            sx = MAP_WIDTH + 120;
+            sy = Math.random() * MAP_HEIGHT;
+          } else if (side === 2) {
+            sx = Math.random() * MAP_WIDTH;
+            sy = MAP_HEIGHT + 120;
+          } else {
+            sx = -120;
+            sy = Math.random() * MAP_HEIGHT;
+          }
+
+          const dx = player.x - sx;
+          const dy = player.y - sy;
+          const angle = Math.atan2(dy, dx);
+          const length = Math.sqrt(MAP_WIDTH * MAP_WIDTH + MAP_HEIGHT * MAP_HEIGHT) + 400;
+
+          const warning = new PIXI.Graphics();
+          warning.beginFill(0xff0000, 0.25);
+          warning.drawRect(0, -40, length, 80);
+          warning.endFill();
+          warning.lineStyle(3, 0xff0000, 0.7);
+          warning.drawRect(0, -40, length, 80);
+          warning.x = sx;
+          warning.y = sy;
+          warning.rotation = angle;
+          gameWorld.addChild(warning);
+
+          lasersRef.current.push({
+            phase: 'warning',
+            createdAt: Date.now(),
+            warning,
+            beam: null,
+            sx,
+            sy,
+            angle,
+            length,
+            lastHitAt: 0
+          });
+        };
+
         // Fonction pour créer un powerup
         const createPowerup = async (x, y, type) => {
           try {
@@ -1373,30 +1592,52 @@ const Game = () => {
 
         // Pas de monstre ni powerup au démarrage - ils apparaîtront avec les timers
         
-        // Spawn des monstres toutes les 3 secondes (pour test)
-        const monsterSpawnInterval = setInterval(() => {
-          if (modalOpenRef.current) return;
-          createMonster();
-        }, 3000);
+        // Spawn des monstres / powerups (désactivé en mode boss)
+        let monsterSpawnInterval = null;
+        let powerupSpawnInterval = null;
+        if (gameModeRef.current !== 'boss') {
+          monsterSpawnInterval = setInterval(() => {
+            if (modalOpenRef.current) return;
+            createMonster();
+            const mult = Math.max(1, Number(enemySpawnMultiplierRef.current) || 1);
+            if (mult > 1) {
+              const extraInt = Math.max(0, Math.floor(mult) - 1);
+              for (let i = 0; i < extraInt; i += 1) {
+                createMonster();
+              }
+              const frac = mult - Math.floor(mult);
+              if (frac > 0 && Math.random() < frac) {
+                createMonster();
+              }
+            }
+          }, 3000);
 
-        // Spawn des powerups toutes les 30 secondes (moins de spam)
-        const powerupSpawnInterval = setInterval(() => {
-          if (modalOpenRef.current) return;
-          // Limiter à 3 powerups max sur la map
-          if (powerupsRef.current.length < 3) {
-            // Position aléatoire sur la map
-            const x = Math.random() * MAP_WIDTH;
-            const y = Math.random() * MAP_HEIGHT;
-            
-            // Type de powerup aléatoire
-            const types = playerClassRef.current === 'templar'
-              ? ['player_speed', 'damage_bonus', 'spear_count', 'attack_speed']
-              : ['player_speed', 'fireball_size', 'damage_bonus', 'multi_shot'];
-            const randomType = types[Math.floor(Math.random() * types.length)];
-            
-            createPowerup(x, y, randomType);
-          }
-        }, 30000);
+          powerupSpawnInterval = setInterval(() => {
+            if (modalOpenRef.current) return;
+            // Limiter à 3 powerups max sur la map
+            if (powerupsRef.current.length < 3) {
+              // Position aléatoire sur la map
+              const x = Math.random() * MAP_WIDTH;
+              const y = Math.random() * MAP_HEIGHT;
+
+              // Type de powerup aléatoire
+              const types = playerClassRef.current === 'templar'
+                ? ['player_speed', 'damage_bonus', 'spear_count', 'attack_speed']
+                : ['player_speed', 'fireball_size', 'damage_bonus', 'multi_shot'];
+              const randomType = types[Math.floor(Math.random() * types.length)];
+
+              createPowerup(x, y, randomType);
+            }
+          }, 30000);
+        }
+
+        if (gameModeRef.current === 'boss') {
+          bossModePicksLeftRef.current = 10;
+          setBossModePicksDone(0);
+          setCurrentPowerup({ type: 'boss_mode_pick', isLevelUp: true });
+          setShowPowerupSelector(true);
+          powerupCollisionDetectedRef.current = true;
+        }
 
         // Fonction pour mettre à jour l'affichage de la vie
         const updateHealthDisplay = () => {
@@ -1579,7 +1820,82 @@ const Game = () => {
             updateExperienceBar(playerRef.current);
 
             const nowMs = Date.now();
-            const elapsedSeconds = Math.max(0, Math.floor((nowMs - gameStartAtRef.current) / 1000));
+            const pausedExtra = pausedAtRef.current ? (nowMs - pausedAtRef.current) : 0;
+            const elapsedMs = Math.max(0, nowMs - gameStartAtRef.current - (pausedTotalMsRef.current || 0) - pausedExtra);
+            const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+
+            if (gameModeRef.current !== 'boss') {
+              // Système de vagues (timelines)
+              const cycleLength = 180;
+              const cycleIndex = Math.floor(elapsedSeconds / cycleLength);
+              const timeInCycle = elapsedSeconds % cycleLength;
+              const applied = waveAppliedRef.current;
+
+              const desiredDamageSteps = Math.max(0, cycleIndex + (timeInCycle >= 60 ? 1 : 0));
+              const desiredSpawnSteps = Math.max(0, cycleIndex + (timeInCycle >= 90 ? 1 : 0));
+              const desiredSpeedSteps = Math.max(0, cycleIndex + (timeInCycle >= 150 ? 1 : 0));
+
+              if (desiredDamageSteps > applied.damageSteps) {
+                applied.damageSteps = desiredDamageSteps;
+                enemyDamageMultiplierRef.current = Math.pow(1.2, applied.damageSteps);
+                if (waveNotificationTextRef.current) {
+                  waveNotificationTextRef.current.text = `Vague: Dégâts ennemis +20% (x${enemyDamageMultiplierRef.current.toFixed(2)})`;
+                  waveNotificationUntilRef.current = nowMs + 3200;
+                }
+              }
+
+              if (desiredSpawnSteps > applied.spawnSteps) {
+                applied.spawnSteps = desiredSpawnSteps;
+                enemySpawnMultiplierRef.current = 1 + applied.spawnSteps;
+                if (waveNotificationTextRef.current) {
+                  waveNotificationTextRef.current.text = `Vague: Ennemis +100% (x${enemySpawnMultiplierRef.current.toFixed(0)})`;
+                  waveNotificationUntilRef.current = nowMs + 3200;
+                }
+              }
+
+              if (desiredSpeedSteps > applied.speedSteps) {
+                const prev = applied.speedSteps;
+                applied.speedSteps = desiredSpeedSteps;
+                enemySpeedMultiplierRef.current = Math.pow(1.2, applied.speedSteps);
+                const ratio = Math.pow(1.2, applied.speedSteps - prev);
+                monstersRef.current.forEach((m) => {
+                  if (m && m.isAlive) {
+                    m.speed *= ratio;
+                  }
+                });
+                if (waveNotificationTextRef.current) {
+                  waveNotificationTextRef.current.text = `Vague: Vitesse ennemis +20% (x${enemySpeedMultiplierRef.current.toFixed(2)})`;
+                  waveNotificationUntilRef.current = nowMs + 3200;
+                }
+              }
+
+              if (timeInCycle >= 120 && !applied.epicCyclesDone.has(cycleIndex)) {
+                for (let i = 0; i < 10; i += 1) {
+                  createMonster({ forceEpic: true });
+                }
+                applied.epicCyclesDone.add(cycleIndex);
+                if (waveNotificationTextRef.current) {
+                  waveNotificationTextRef.current.text = 'Vague: 10 monstres épiques apparaissent !';
+                  waveNotificationUntilRef.current = nowMs + 3200;
+                }
+              }
+
+              if (elapsedSeconds >= 180 && !applied.bossDone) {
+                createBoss();
+                applied.bossDone = true;
+                if (waveNotificationTextRef.current) {
+                  waveNotificationTextRef.current.text = 'Boss: Le Créateur de la brume arrive !';
+                  waveNotificationUntilRef.current = nowMs + 4200;
+                }
+              }
+            }
+
+            if (waveNotificationTextRef.current) {
+              waveNotificationTextRef.current.x = app.screen.width / 2;
+              if (nowMs > (waveNotificationUntilRef.current || 0)) {
+                waveNotificationTextRef.current.text = '';
+              }
+            }
             if (timerTextRef.current) {
               const m = Math.floor(elapsedSeconds / 60);
               const s = elapsedSeconds % 60;
@@ -1587,6 +1903,26 @@ const Game = () => {
               const ss = String(s).padStart(2, '0');
               timerTextRef.current.text = `${mm}:${ss}`;
               timerTextRef.current.x = app.screen.width / 2;
+            }
+            if (bossHudRef.current && bossHudRef.current.container) {
+              const boss = bossRef.current;
+              if (boss && boss.isAlive) {
+                bossHudRef.current.container.visible = true;
+                bossHudRef.current.container.x = app.screen.width / 2;
+
+                const ratio = boss.maxHealth > 0 ? (boss.health / boss.maxHealth) : 0;
+                const clamped = Math.max(0, Math.min(1, ratio));
+                const w = bossHudRef.current.width;
+                const h = bossHudRef.current.height;
+                const y = bossHudRef.current.barY;
+
+                bossHudRef.current.fill.clear();
+                bossHudRef.current.fill.beginFill(0xff2d2d, 0.95);
+                bossHudRef.current.fill.drawRoundedRect(-w / 2, y, w * clamped, h, 8);
+                bossHudRef.current.fill.endFill();
+              } else {
+                bossHudRef.current.container.visible = false;
+              }
             }
             if (killsTextRef.current) {
               killsTextRef.current.text = `Kills: ${killsRef.current}`;
@@ -1603,6 +1939,15 @@ const Game = () => {
 
                 if (monster instanceof EpicMonster) {
                   monster.tryShoot(projectilesRef, gameWorld, createProjectileSprite, Date.now());
+                }
+
+                if (monster instanceof BossMonster) {
+                  if (nowMs - monster.lastLaserAt >= monster.laserCooldownMs) {
+                    monster.lastLaserAt = nowMs;
+                    const side = bossLaserSideIndexRef.current % 4;
+                    bossLaserSideIndexRef.current = (bossLaserSideIndexRef.current + 1) % 4;
+                    createLaserAttack(side);
+                  }
                 }
                 
                 // Vérifier collision avec l'épée
@@ -1655,7 +2000,9 @@ const Game = () => {
                 // Vérifier collision avec le joueur (mais ne plus détruire le monstre)
                 if (monster.checkCollision(playerRef.current)) {
                   // Le joueur prend des dégâts avec recul
-                  const isDead = playerRef.current.takeDamage(5, monster.x, monster.y);
+                  const contactBase = 5;
+                  const contactDamage = contactBase * Math.max(0.1, Number(enemyDamageMultiplierRef.current) || 1);
+                  const isDead = playerRef.current.takeDamage(contactDamage, monster.x, monster.y);
                   updateHealthDisplay();
                   
                   // Ne plus détruire le monstre au contact du joueur
@@ -1664,7 +2011,9 @@ const Game = () => {
                     console.log('Game Over!');
                     if (!gameOverShownRef.current) {
                       gameOverShownRef.current = true;
-                      const timeSeconds = Math.max(1, Math.floor((Date.now() - gameStartAtRef.current) / 1000));
+                      const endNowMs = Date.now();
+                      const endPausedExtra = pausedAtRef.current ? (endNowMs - pausedAtRef.current) : 0;
+                      const timeSeconds = Math.max(1, Math.floor(Math.max(0, endNowMs - gameStartAtRef.current - (pausedTotalMsRef.current || 0) - endPausedExtra) / 1000));
                       const kills = killsRef.current;
                       setFinalTimeSeconds(timeSeconds);
                       setFinalKills(kills);
@@ -1691,14 +2040,17 @@ const Game = () => {
               projectile.update(MAP_WIDTH, MAP_HEIGHT);
 
               if (projectile.isAlive && projectile.checkCollision(playerRef.current)) {
-                const isDead = playerRef.current.takeDamage(projectile.damage, projectile.x, projectile.y);
+                const dmg = (projectile.damage || 0) * Math.max(0.1, Number(enemyDamageMultiplierRef.current) || 1);
+                const isDead = playerRef.current.takeDamage(dmg, projectile.x, projectile.y);
                 updateHealthDisplay();
                 projectile.destroy();
                 if (isDead) {
                   console.log('Game Over!');
                   if (!gameOverShownRef.current) {
                     gameOverShownRef.current = true;
-                    const timeSeconds = Math.max(1, Math.floor((Date.now() - gameStartAtRef.current) / 1000));
+                    const endNowMs = Date.now();
+                    const endPausedExtra = pausedAtRef.current ? (endNowMs - pausedAtRef.current) : 0;
+                    const timeSeconds = Math.max(1, Math.floor(Math.max(0, endNowMs - gameStartAtRef.current - (pausedTotalMsRef.current || 0) - endPausedExtra) / 1000));
                     const kills = killsRef.current;
                     setFinalTimeSeconds(timeSeconds);
                     setFinalKills(kills);
@@ -1727,6 +2079,119 @@ const Game = () => {
             projectilesRef.current = projectilesRef.current.filter(projectile => projectile.isAlive);
 
             playerProjectilesRef.current = playerProjectilesRef.current.filter((p) => p.isAlive);
+
+            // Mise à jour des lasers du boss
+            lasersRef.current.forEach((lz) => {
+              if (!lz) return;
+              const age = nowMs - lz.createdAt;
+              if (lz.phase === 'warning' && age >= 700) {
+                lz.phase = 'beam';
+                if (lz.warning && lz.warning.parent) {
+                  lz.warning.parent.removeChild(lz.warning);
+                }
+                lz.warning = null;
+
+                if (laserTextureRef.current) {
+                  const beam = new PIXI.Sprite(laserTextureRef.current);
+                  beam.anchor.set(0, 0.5);
+                  beam.x = lz.sx;
+                  beam.y = lz.sy;
+                  beam.rotation = lz.angle;
+                  beam.width = lz.length;
+                  beam.height = 120;
+                  beam.alpha = 0.95;
+                  gameWorld.addChild(beam);
+                  lz.beam = beam;
+                } else {
+                  const beam = new PIXI.Graphics();
+                  beam.beginFill(0xffffff, 0.95);
+                  beam.drawRect(0, -40, lz.length, 80);
+                  beam.endFill();
+                  beam.lineStyle(4, 0xff0000, 0.9);
+                  beam.drawRect(0, -40, lz.length, 80);
+                  beam.x = lz.sx;
+                  beam.y = lz.sy;
+                  beam.rotation = lz.angle;
+                  gameWorld.addChild(beam);
+                  lz.beam = beam;
+                }
+              }
+
+              if (lz.phase === 'beam') {
+                const beamDurationMs = 200;
+                if (age >= 700 + beamDurationMs) {
+                  if (lz.beam && lz.beam.parent) {
+                    lz.beam.parent.removeChild(lz.beam);
+                  }
+                  lz.beam = null;
+                  lz.phase = 'done';
+                  return;
+                }
+
+                const player = playerRef.current;
+                if (!player) return;
+
+                // Collision joueur vs ligne (distance au segment)
+                const px = player.x;
+                const py = player.y;
+                const x1 = lz.sx;
+                const y1 = lz.sy;
+                const x2 = lz.sx + Math.cos(lz.angle) * lz.length;
+                const y2 = lz.sy + Math.sin(lz.angle) * lz.length;
+
+                const vx = x2 - x1;
+                const vy = y2 - y1;
+                const wx = px - x1;
+                const wy = py - y1;
+                const c1 = wx * vx + wy * vy;
+                const c2 = vx * vx + vy * vy;
+                let t = 0;
+                if (c2 > 0) {
+                  t = c1 / c2;
+                }
+                t = Math.max(0, Math.min(1, t));
+                const projx = x1 + t * vx;
+                const projy = y1 + t * vy;
+                const ddx = px - projx;
+                const ddy = py - projy;
+                const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+
+                const beamHalfWidth = 60;
+                const hitRadius = (player.hitboxRadius || 20) + beamHalfWidth;
+                if (dist <= hitRadius) {
+                  const hitCooldownMs = 350;
+                  if (nowMs - (lz.lastHitAt || 0) >= hitCooldownMs) {
+                    lz.lastHitAt = nowMs;
+                    const isDead = playerRef.current.takeDamage(20, px - Math.cos(lz.angle) * 10, py - Math.sin(lz.angle) * 10);
+                    updateHealthDisplay();
+                    if (isDead) {
+                      console.log('Game Over!');
+                      if (!gameOverShownRef.current) {
+                        gameOverShownRef.current = true;
+                        const endNowMs = Date.now();
+                        const endPausedExtra = pausedAtRef.current ? (endNowMs - pausedAtRef.current) : 0;
+                        const timeSeconds = Math.max(1, Math.floor(Math.max(0, endNowMs - gameStartAtRef.current - (pausedTotalMsRef.current || 0) - endPausedExtra) / 1000));
+                        const kills = killsRef.current;
+                        setFinalTimeSeconds(timeSeconds);
+                        setFinalKills(kills);
+                        setFinalScore(kills * timeSeconds);
+                        setShowGameOver(true);
+
+                        const runMaxLevel = playerRef.current?.level || 1;
+                        try {
+                          axios.post('/stats/run', { kills, epicKills: epicKillsRef.current, timeSeconds, maxLevel: runMaxLevel }).catch((e) => {
+                            console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                          });
+                        } catch (e) {
+                          console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            });
+            lasersRef.current = lasersRef.current.filter((lz) => lz && lz.phase !== 'done');
           }
         };
 
@@ -1736,8 +2201,12 @@ const Game = () => {
         const cleanup = () => {
           window.removeEventListener('keydown', handleKeyDown);
           window.removeEventListener('keyup', handleKeyUp);
-          clearInterval(monsterSpawnInterval);
-          clearInterval(powerupSpawnInterval);
+          if (monsterSpawnInterval) {
+            clearInterval(monsterSpawnInterval);
+          }
+          if (powerupSpawnInterval) {
+            clearInterval(powerupSpawnInterval);
+          }
           if (powerupSelectorTimeoutRef.current) {
             clearTimeout(powerupSelectorTimeoutRef.current);
           }
@@ -1858,6 +2327,31 @@ const Game = () => {
       default:
         console.warn('Type de powerup inconnu:', powerupType);
     }
+
+    if (gameModeRef.current === 'boss' && bossModePicksLeftRef.current > 0) {
+      bossModePicksLeftRef.current -= 1;
+      setBossModePicksDone((v) => v + 1);
+
+      if (bossModePicksLeftRef.current > 0) {
+        setCurrentPowerup({ type: 'boss_mode_pick', isLevelUp: true, _k: Date.now() });
+        setShowPowerupSelector(true);
+        powerupCollisionDetectedRef.current = true;
+        return;
+      }
+
+      setShowPowerupSelector(false);
+      setCurrentPowerup(null);
+      powerupCollisionDetectedRef.current = false;
+
+      pausedAtRef.current = null;
+      pausedTotalMsRef.current = 0;
+      gameStartAtRef.current = Date.now();
+
+      if (createBossRef.current) {
+        createBossRef.current();
+      }
+      return;
+    }
     
     // Détruire le powerup (seulement si c'est un vrai powerup, pas un level up)
     if (currentPowerup && !currentPowerup.isLevelUp && currentPowerup.sprite && currentPowerup.sprite.parent) {
@@ -1872,6 +2366,9 @@ const Game = () => {
   };
 
   const handlePowerupCancel = () => {
+    if (gameModeRef.current === 'boss' && bossModePicksLeftRef.current > 0) {
+      return;
+    }
     if (currentPowerup && !currentPowerup.isLevelUp && currentPowerup.sprite && currentPowerup.sprite.parent) {
       currentPowerup.sprite.parent.removeChild(currentPowerup.sprite);
       currentPowerup.isAlive = false;
@@ -1888,6 +2385,22 @@ const Game = () => {
 
   useEffect(() => {
     modalOpenRef.current = !!showPowerupSelector || !!showGameOver;
+  }, [showPowerupSelector, showGameOver]);
+
+  useEffect(() => {
+    const isPaused = !!showPowerupSelector || !!showGameOver;
+    if (isPaused) {
+      if (pausedAtRef.current === null) {
+        pausedAtRef.current = Date.now();
+      }
+      return;
+    }
+
+    if (pausedAtRef.current !== null) {
+      const nowMs = Date.now();
+      pausedTotalMsRef.current = (pausedTotalMsRef.current || 0) + (nowMs - pausedAtRef.current);
+      pausedAtRef.current = null;
+    }
   }, [showPowerupSelector, showGameOver]);
 
   return (
@@ -1909,6 +2422,7 @@ const Game = () => {
           onSelect={handlePowerupSelect}
           onCancel={handlePowerupCancel}
           playerClass={playerClassRef.current}
+          key={isBossMode ? `boss-${bossModePicksDone}` : 'normal'}
         />
       )}
       {showGameOver && (

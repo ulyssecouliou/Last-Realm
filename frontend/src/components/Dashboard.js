@@ -9,6 +9,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState({ bestScore: 0, maxKills: 0, maxSurvivalSeconds: 0 });
   const [showClassModal, setShowClassModal] = useState(false);
+  const [isBossMode, setIsBossMode] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -45,6 +46,12 @@ const Dashboard = () => {
   };
 
   const handleStartGame = () => {
+    setIsBossMode(false);
+    setShowClassModal(true);
+  };
+
+  const handleStartBossMode = () => {
+    setIsBossMode(true);
     setShowClassModal(true);
   };
 
@@ -55,7 +62,8 @@ const Dashboard = () => {
       // ignore
     }
     setShowClassModal(false);
-    navigate(`/game?class=${encodeURIComponent(playerClass)}`);
+    const mode = isBossMode ? 'boss' : 'normal';
+    navigate(`/game?mode=${encodeURIComponent(mode)}&class=${encodeURIComponent(playerClass)}`);
   };
 
   const handleViewStats = () => {
@@ -105,6 +113,13 @@ const Dashboard = () => {
             <div className="game-actions">
               <button onClick={handleStartGame} className="start-game-button">
                 ⚔️ Commencer la bataille
+              </button>
+              <button
+                onClick={handleStartBossMode}
+                className="secondary-button"
+                title={'Choisis ta classe, puis 10 powerups, puis bats le boss'}
+              >
+                👑 Mode Boss
               </button>
               <button onClick={handleViewStats} className="secondary-button">
                 📊 Voir les statistiques
