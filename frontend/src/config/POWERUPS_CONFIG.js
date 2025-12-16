@@ -2,6 +2,9 @@
  * POWERUPS_CONFIG.js
  * Configuration centralisée du système de powerups
  * 
+
+import powerUpImg from './power-up.png';
+
  * USAGE:
  * import POWERUPS_CONFIG from './POWERUPS_CONFIG'
  * puis utiliser les constantes dans votre code
@@ -58,6 +61,8 @@ export const POWERUPS_CONFIG = {
   
   // Sprites
   SPRITE: {
+    // Image du powerup (importée depuis le dossier `config`)
+    IMAGE: powerUpImg,
     SIZE: 50, // Taille du carré powerup (50x50)
     HALF_SIZE: 25, // Moitié de la taille
     BORDER_WIDTH: 3,
