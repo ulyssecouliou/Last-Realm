@@ -327,8 +327,8 @@ class Monster {
     return distance < 20; // Distance de collision
   }
 
-  takeDamage(damage, nowMs = Date.now()) {
-    if (nowMs - this.lastDamageAt < this.damageCooldownMs) {
+  takeDamage(damage, nowMs = Date.now(), ignoreCooldown = false) {
+    if (!ignoreCooldown && (nowMs - this.lastDamageAt < this.damageCooldownMs)) {
       return false;
     }
 
@@ -1761,41 +1761,88 @@ const Game = () => {
                   const damageMultiplier = (playerRef.current?.damageMultiplier || 1) * (playerRef.current?.rangedDamageMultiplier || 1);
 
                   const count = Math.max(1, Math.min(9, Number(playerRef.current?.projectilesPerShot) || 1));
-                  const baseAngle = Math.atan2(dy, dx);
-                  const spread = count === 1 ? 0 : 0.18;
 
-                  for (let i = 0; i < count; i += 1) {
-                    const offset = (i - (count - 1) / 2) * spread;
-                    const angle = baseAngle + offset;
-                    const vx = Math.cos(angle) * speed;
-                    const vy = Math.sin(angle) * speed;
+                  if (playerClassRef.current === 'mage') {
+                    // Récupérer les monstres à portée et les trier par distance croissante
+                    const monstersInRange = monstersRef.current
+                      .filter(m => m && m.isAlive)
+                      .map(m => {
+                        const dxm = m.x - playerRef.current.x;
+                        const dym = m.y - playerRef.current.y;
+                        const distm = Math.sqrt(dxm * dxm + dym * dym);
+                        return { m, distm };
+                      })
+                      .filter(o => o.distm <= attackRange)
+                      .sort((a, b) => a.distm - b.distm)
+                      .map(o => o.m);
 
-                    if (playerClassRef.current === 'ranger') {
+                    if (monstersInRange.length === 0) {
+                      // aucun ennemi à portée
+                      mageLastShotAtRef.current = nowMsMage;
+                    } else {
+                      // Fonction utilitaire pour créer et pousser un projectile
+                      const spawnProjectile = (targetX, targetY) => {
+                        const dxT = targetX - playerRef.current.x;
+                        const dyT = targetY - playerRef.current.y;
+                        const distT = Math.sqrt(dxT * dxT + dyT * dyT) || 1;
+                        const vx = (dxT / distT) * speed;
+                        const vy = (dyT / distT) * speed;
+
+                        const fireball = new PlayerProjectile(playerRef.current.x, playerRef.current.y, vx, vy, sizeMultiplier, damageMultiplier);
+                        const fireballSprite = createPlayerProjectileSprite();
+                        try { fireballSprite.scale.set(fireballSprite.scale.x * sizeMultiplier, fireballSprite.scale.y * sizeMultiplier); } catch (e) {}
+                        fireball.setSprite(fireballSprite);
+                        gameWorld.addChild(fireballSprite);
+                        playerProjectilesRef.current.push(fireball);
+                      };
+
+                      // Attribution des projectiles aux ennemis
+                      const enemiesCount = monstersInRange.length;
+                      if (enemiesCount >= count) {
+                        // Un projectile par ennemi jusqu'à épuisement
+                        for (let i = 0; i < count; i += 1) {
+                          spawnProjectile(monstersInRange[i].x, monstersInRange[i].y);
+                        }
+                      } else {
+                        // Donner 1 boule par ennemi puis répartir le reste sur le plus proche
+                        for (let i = 0; i < enemiesCount; i += 1) {
+                          spawnProjectile(monstersInRange[i].x, monstersInRange[i].y);
+                        }
+                        const remaining = count - enemiesCount;
+                        const focus = monstersInRange[0];
+                        // Tirer les projectiles restants vers le plus proche, légèrement espacés dans le temps
+                        const delayStep = 80; // ms entre chaque boule consécutive
+                        for (let r = 0; r < remaining; r += 1) {
+                          const delay = (r + 1) * delayStep;
+                          setTimeout(() => {
+                            spawnProjectile(focus.x, focus.y);
+                          }, delay);
+                        }
+                      }
+
+                      // Empêcher le tir immédiat suivant
+                      mageLastShotAtRef.current = nowMsMage;
+                    }
+                  } else {
+                    // Ranger: comportement original en cône
+                    const baseAngle = Math.atan2(dy, dx);
+                    const spread = count === 1 ? 0 : 0.18;
+                    for (let i = 0; i < count; i += 1) {
+                      const offset = (i - (count - 1) / 2) * spread;
+                      const angle = baseAngle + offset;
+                      const vx = Math.cos(angle) * speed;
+                      const vy = Math.sin(angle) * speed;
+
                       const maxDist = 720 * rangeMult;
                       const arrow = new RangerArrow(playerRef.current.x, playerRef.current.y, vx, vy, sizeMultiplier, damageMultiplier, maxDist);
                       const arrowSprite = createRangerProjectileSprite();
-                      try {
-                        arrowSprite.scale.set(arrowSprite.scale.x * sizeMultiplier, arrowSprite.scale.y * sizeMultiplier);
-                      } catch (e) {
-                        // ignore
-                      }
+                      try { arrowSprite.scale.set(arrowSprite.scale.x * sizeMultiplier, arrowSprite.scale.y * sizeMultiplier); } catch (e) {}
                       arrow.setSprite(arrowSprite);
                       gameWorld.addChild(arrowSprite);
                       playerProjectilesRef.current.push(arrow);
-                    } else {
-                      const fireball = new PlayerProjectile(playerRef.current.x, playerRef.current.y, vx, vy, sizeMultiplier, damageMultiplier);
-                      const fireballSprite = createPlayerProjectileSprite();
-                      try {
-                        fireballSprite.scale.set(fireballSprite.scale.x * sizeMultiplier, fireballSprite.scale.y * sizeMultiplier);
-                      } catch (e) {
-                        // ignore
-                      }
-                      fireball.setSprite(fireballSprite);
-                      gameWorld.addChild(fireballSprite);
-                      playerProjectilesRef.current.push(fireball);
                     }
+                    mageLastShotAtRef.current = nowMsMage;
                   }
-                  mageLastShotAtRef.current = nowMsMage;
                 }
               }
             }
@@ -1835,7 +1882,12 @@ const Game = () => {
                     }
                   }
 
-                  const isDead = m.takeDamage(p.damage, Date.now());
+                  // Pour les flèches (RangerArrow) on garde le comportement existant,
+                  // pour les boules du magicien on force l'application des dégâts
+                  // même si le monstre a été touché récemment.
+                  const isDead = (p instanceof RangerArrow)
+                    ? m.takeDamage(p.damage, Date.now())
+                    : m.takeDamage(p.damage, Date.now(), true);
                   if (!(p instanceof RangerArrow)) {
                     p.destroy();
                   }
