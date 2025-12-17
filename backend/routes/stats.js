@@ -19,6 +19,8 @@ router.get('/me', async (req, res) => {
         maxKills: 0,
         totalEpicKills: 0,
         maxLevel: 1,
+        heroModeWins: 0,
+        normalModeWins: 0,
         totalSurvivalSeconds: 0,
         maxSurvivalSeconds: 0
       }
@@ -37,7 +39,7 @@ router.get('/me', async (req, res) => {
 router.post('/run', async (req, res) => {
   try {
     const userId = req.user.id;
-    const { kills, epicKills = 0, timeSeconds, maxLevel = 1 } = req.body;
+    const { kills, epicKills = 0, timeSeconds, maxLevel = 1, heroModeWin = false, normalModeWin = false } = req.body;
 
     if (!Number.isFinite(kills) || kills < 0 || !Number.isFinite(timeSeconds) || timeSeconds < 0) {
       return res.status(400).json({ success: false, error: 'Invalid kills or timeSeconds' });
@@ -59,6 +61,8 @@ router.post('/run', async (req, res) => {
         maxKills: 0,
         totalEpicKills: 0,
         maxLevel: 1,
+        heroModeWins: 0,
+        normalModeWins: 0,
         totalSurvivalSeconds: 0,
         maxSurvivalSeconds: 0
       }
@@ -71,6 +75,8 @@ router.post('/run', async (req, res) => {
       maxKills: Math.max(stats.maxKills || 0, kills),
       totalEpicKills: (stats.totalEpicKills || 0) + epicKills,
       maxLevel: Math.max(stats.maxLevel || 1, maxLevel),
+      heroModeWins: (stats.heroModeWins || 0) + (heroModeWin ? 1 : 0),
+      normalModeWins: (stats.normalModeWins || 0) + (normalModeWin ? 1 : 0),
       totalSurvivalSeconds: (stats.totalSurvivalSeconds || 0) + timeSeconds,
       maxSurvivalSeconds: Math.max(stats.maxSurvivalSeconds || 0, timeSeconds)
     };

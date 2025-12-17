@@ -40,7 +40,7 @@ const Login = () => {
     <div className="auth-container">
       <div className="auth-card">
         <div className="auth-header">
-          <h1>🕯️ Last Realm</h1>
+          <h1><img className="ui-icon" src="/icon.png" alt="Last Realm" /> Last Realm</h1>
           <h2>Connexion</h2>
           <p>Entrez dans le dernier royaume</p>
         </div>

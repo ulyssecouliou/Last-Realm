@@ -9,7 +9,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState({ bestScore: 0, maxKills: 0, maxSurvivalSeconds: 0 });
   const [showClassModal, setShowClassModal] = useState(false);
-  const [isBossMode, setIsBossMode] = useState(false);
+  const [selectedMode, setSelectedMode] = useState('infinite');
 
   useEffect(() => {
     let mounted = true;
@@ -46,12 +46,17 @@ const Dashboard = () => {
   };
 
   const handleStartGame = () => {
-    setIsBossMode(false);
+    setSelectedMode('infinite');
+    setShowClassModal(true);
+  };
+
+  const handleStartNormalMode = () => {
+    setSelectedMode('normal');
     setShowClassModal(true);
   };
 
   const handleStartBossMode = () => {
-    setIsBossMode(true);
+    setSelectedMode('boss');
     setShowClassModal(true);
   };
 
@@ -62,7 +67,7 @@ const Dashboard = () => {
       // ignore
     }
     setShowClassModal(false);
-    const mode = isBossMode ? 'boss' : 'normal';
+    const mode = selectedMode || 'infinite';
     navigate(`/game?mode=${encodeURIComponent(mode)}&class=${encodeURIComponent(playerClass)}`);
   };
 
@@ -84,7 +89,7 @@ const Dashboard = () => {
       <header className="dashboard-header">
         <div className="header-content">
           <div className="logo-section">
-            <h1>🕯️ Last Realm</h1>
+            <h1><img className="ui-icon" src="/icon.png" alt="Last Realm" /> Last Realm</h1>
             <p className="tagline">Le dernier royaume vous attend</p>
           </div>
           
@@ -112,7 +117,14 @@ const Dashboard = () => {
             
             <div className="game-actions">
               <button onClick={handleStartGame} className="start-game-button">
-                ⚔️ Commencer la bataille
+                ♾️ Mode Infini
+              </button>
+              <button
+                onClick={handleStartNormalMode}
+                className="secondary-button"
+                title={'Survis jusqu’au boss (3 minutes) et gagne en le tuant'}
+              >
+                🛡️ Mode Normal
               </button>
               <button
                 onClick={handleStartBossMode}
@@ -151,12 +163,28 @@ const Dashboard = () => {
                 <span className="stat-label">Temps de Survie</span>
               </div>
             </div>
+
+            <div className="stat-card">
+              <div className="stat-icon">👑</div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.heroModeWins || 0}</span>
+                <span className="stat-label">Mode Héros gagnés</span>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon">🛡️</div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.normalModeWins || 0}</span>
+                <span className="stat-label">Mode Normal terminés</span>
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="home-links">
           <button type="button" className="home-link-btn" onClick={() => navigate('/wiki')}>📖 Ouvrir le Wiki</button>
-          <button type="button" className="home-link-btn" onClick={() => navigate('/histoire')}>🕯️ Lire l'Histoire</button>
+          <button type="button" className="home-link-btn" onClick={() => navigate('/histoire')}><img className="ui-icon" src="/icon.png" alt="Histoire" /> Lire l'Histoire</button>
         </div>
       </main>
 
@@ -167,102 +195,64 @@ const Dashboard = () => {
       {showClassModal && (
         <div
           onClick={() => setShowClassModal(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 9999
-          }}
+          className="class-modal-overlay"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 'min(520px, 100%)',
-              borderRadius: 14,
-              border: '1px solid rgba(212, 175, 55, 0.35)',
-              background: 'rgba(10,10,10,0.95)',
-              padding: 16
-            }}
+            className="class-modal"
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <h3 style={{ margin: 0, color: '#d4af37' }}>Choisis ta classe</h3>
+            <div className="class-modal-header">
+              <div>
+                <h3 className="class-modal-title">Choisis ta classe</h3>
+                <div className="class-modal-subtitle">Sélectionne ton héros avant de partir à l'aventure.</div>
+              </div>
               <button
                 onClick={() => setShowClassModal(false)}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  color: '#e6e6e6',
-                  borderRadius: 10,
-                  padding: '6px 10px',
-                  cursor: 'pointer'
-                }}
+                className="class-modal-close"
               >
                 Fermer
               </button>
             </div>
 
-            <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button
-                onClick={() => handleChooseClass('knight')}
-                style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  background: 'rgba(255,255,255,0.05)',
-                  color: '#e6e6e6',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
-              >
-                ⚔️ Chevalier
+            <div className="class-grid">
+              <button type="button" className="class-card" onClick={() => handleChooseClass('knight')}>
+                <div className="class-card-media">
+                  <img className="class-card-img" src="/—Pngtree—knight avatar soldier with shield_23256476.png" alt="Chevalier" />
+                </div>
+                <div className="class-card-body">
+                  <div className="class-card-title">Chevalier</div>
+                  <div className="class-card-desc">Épée tournoyante, dégâts constants au corps-à-corps.</div>
+                </div>
               </button>
-              <button
-                onClick={() => handleChooseClass('mage')}
-                style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  background: 'rgba(255,255,255,0.05)',
-                  color: '#e6e6e6',
-                  cursor: 'pointer',
-                  fontWeight: 'bold'
-                }}
-              >
-                🧙‍♂️ Magicien
+
+              <button type="button" className="class-card" onClick={() => handleChooseClass('mage')}>
+                <div className="class-card-media">
+                  <img className="class-card-img" src="/magicien.png" alt="Magicien" />
+                </div>
+                <div className="class-card-body">
+                  <div className="class-card-title">Magicien</div>
+                  <div className="class-card-desc">Boules de feu à distance, excellent scaling avec les powerups.</div>
+                </div>
               </button>
-              <button
-                onClick={() => handleChooseClass('ranger')}
-                style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  background: 'rgba(255,255,255,0.05)',
-                  color: '#e6e6e6',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  gridColumn: '1 / -1'
-                }}
-              >
-                🏹 Rôdeur des forêts
+
+              <button type="button" className="class-card" onClick={() => handleChooseClass('ranger')}>
+                <div className="class-card-media">
+                  <img className="class-card-img" src="/rodeur.png" alt="Rôdeur" />
+                </div>
+                <div className="class-card-body">
+                  <div className="class-card-title">Rôdeur</div>
+                  <div className="class-card-desc">Flèches perforantes, idéal pour gérer les lignes d'ennemis.</div>
+                </div>
               </button>
-              <button
-                onClick={() => handleChooseClass('templar')}
-                style={{
-                  padding: 14,
-                  borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  background: 'rgba(255,255,255,0.05)',
-                  color: '#e6e6e6',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  gridColumn: '1 / -1'
-                }}
-              >
-                🛡️ Templier déchu
+
+              <button type="button" className="class-card" onClick={() => handleChooseClass('templar')}>
+                <div className="class-card-media">
+                  <img className="class-card-img" src="/templier_dechu.png" alt="Templier déchu" />
+                </div>
+                <div className="class-card-body">
+                  <div className="class-card-title">Templier déchu</div>
+                  <div className="class-card-desc">Lance directionnelle, gros burst sur la pointe.</div>
+                </div>
               </button>
             </div>
           </div>

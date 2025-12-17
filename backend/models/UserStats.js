@@ -42,6 +42,16 @@ const UserStats = sequelize.define('UserStats', {
     allowNull: false,
     defaultValue: 1
   },
+  heroModeWins: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+  normalModeWins: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
   totalSurvivalSeconds: {
     type: DataTypes.INTEGER,
     allowNull: false,

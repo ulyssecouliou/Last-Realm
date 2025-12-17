@@ -63,34 +63,154 @@ const Wiki = () => {
       title: 'Powerups',
       items: [
         {
+          title: 'Système de choix (x3)',
+          image: '/projectile.png',
+          description: "À chaque amélioration, 3 powerups aléatoires sont proposés. Il existe des powerups universels (communs) et des powerups uniques à votre classe."
+        },
+        {
           title: 'Vitesse',
           image: '/projectile.png',
-          description: "Augmente la vitesse de déplacement. Parfait pour esquiver et repositionner."
+          description: "Universel : augmente la vitesse de déplacement."
         },
         {
           title: 'Dégâts',
           image: '/projectile.png',
-          description: "Augmente vos dégâts. Rend chaque coup plus impactant."
+          description: "Universel : augmente les dégâts."
         },
         {
-          title: 'Plusieurs épées',
-          image: '/epee.png',
-          description: "Chevalier uniquement : invoque plusieurs épées autour de vous pour toucher davantage d'ennemis en même temps."
-        },
-        {
-          title: 'Multi-tir',
+          title: 'Vitalité',
           image: '/projectile.png',
-          description: "Ajoute des projectiles par attaque (classes à distance). Les tirs partent en éventail."
+          description: "Universel : +PV max et soigne immédiatement."
+        },
+        {
+          title: 'Armure',
+          image: '/projectile.png',
+          description: "Universel : réduit les dégâts subis."
         },
         {
           title: "Vitesse d'attaque",
           image: '/projectile.png',
-          description: "Accélère le rythme d'attaque (classes corps-à-corps)."
+          description: "Universel : augmente la vitesse d'attaque (affecte le rythme d'attaque / rotation)."
         },
         {
-          title: 'Nombre de lances',
+          title: 'Chevalier — Épée: dégâts',
+          image: '/epee.png',
+          description: "Unique : +dégâts de l'épée tournoyante."
+        },
+        {
+          title: 'Chevalier — Épée: taille',
+          image: '/epee.png',
+          description: "Unique : augmente la hitbox ET le sprite de l'épée."
+        },
+        {
+          title: 'Chevalier — Épée: portée',
+          image: '/epee.png',
+          description: "Unique : augmente le rayon de rotation de l'épée (porte plus loin autour du joueur)."
+        },
+        {
+          title: 'Chevalier — Épée: rotation',
+          image: '/epee.png',
+          description: "Unique : augmente la vitesse de rotation de l'épée."
+        },
+        {
+          title: 'Chevalier — Garde',
+          image: '/projectile.png',
+          description: "Unique : réduit les dégâts subis."
+        },
+        {
+          title: 'Chevalier — Endurance',
+          image: '/projectile.png',
+          description: "Unique : bonus de vitesse pour mieux se repositionner."
+        },
+        {
+          title: 'Mage — Boule de feu: taille',
+          image: '/projectile.png',
+          description: "Unique : augmente la taille/hitbox des projectiles."
+        },
+        {
+          title: 'Mage — Multi-tir',
+          image: '/projectile.png',
+          description: "Unique : +1 projectile par attaque."
+        },
+        {
+          title: 'Mage — Arcane',
+          image: '/projectile.png',
+          description: "Unique : augmente les dégâts à distance."
+        },
+        {
+          title: 'Mage — Hâte',
+          image: '/projectile.png',
+          description: "Unique : augmente la vitesse d'attaque."
+        },
+        {
+          title: 'Mage — Focus',
+          image: '/projectile.png',
+          description: "Unique : augmente la vitesse des projectiles."
+        },
+        {
+          title: 'Mage — Barrière',
+          image: '/projectile.png',
+          description: "Unique : réduit les dégâts subis."
+        },
+        {
+          title: 'Rôdeur — Multi-tir',
+          image: '/fleche.png',
+          description: "Unique : +1 projectile par attaque."
+        },
+        {
+          title: 'Rôdeur — Flèches: dégâts',
+          image: '/fleche.png',
+          description: "Unique : augmente les dégâts des flèches."
+        },
+        {
+          title: 'Rôdeur — Flèches: vitesse',
+          image: '/fleche.png',
+          description: "Unique : augmente la vitesse des flèches."
+        },
+        {
+          title: 'Rôdeur — Flèches: portée',
+          image: '/fleche.png',
+          description: "Unique : augmente la portée (distance max) des flèches."
+        },
+        {
+          title: 'Rôdeur — Agilité',
+          image: '/projectile.png',
+          description: "Unique : bonus de vitesse."
+        },
+        {
+          title: 'Rôdeur — Cuirasse',
+          image: '/projectile.png',
+          description: "Unique : réduit les dégâts subis."
+        },
+        {
+          title: 'Templier — Nombre de lances',
           image: '/lance.png',
-          description: "Ajoute une lance supplémentaire (Templier déchu). Plusieurs lances frappent simultanément."
+          description: "Unique : +1 lance (jusqu'à une limite)."
+        },
+        {
+          title: 'Templier — Lance: dégâts',
+          image: '/lance.png',
+          description: "Unique : augmente les dégâts des lances."
+        },
+        {
+          title: 'Templier — Lance: hitbox',
+          image: '/lance.png',
+          description: "Unique : augmente la taille de la pointe (hitbox)."
+        },
+        {
+          title: 'Templier — Lance: portée',
+          image: '/lance.png',
+          description: "Unique : augmente la portée des lances."
+        },
+        {
+          title: 'Templier — Serment',
+          image: '/projectile.png',
+          description: "Unique : réduit les dégâts subis."
+        },
+        {
+          title: 'Templier — Ferveur',
+          image: '/projectile.png',
+          description: "Unique : augmente la vitesse d'attaque."
         }
       ]
     },
@@ -107,6 +227,11 @@ const Wiki = () => {
           title: 'Monstre épique',
           image: '/monstreEpique.png',
           description: "Plus de vie, plus dangereux, capable de tirer des projectiles. Priorité absolue quand il apparaît."
+        },
+        {
+          title: 'Boss (3 minutes)',
+          image: '/BOSS.png',
+          description: "Apparaît à 3 minutes en Mode Normal. Très résistant et lance des lasers : esquivez l'avertissement puis le rayon. Le Mode Normal est gagné quand vous le tuez."
         }
       ]
     }

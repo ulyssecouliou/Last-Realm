@@ -49,6 +49,8 @@ const Stats = () => {
       maxKills: Number(s.maxKills) || 0,
       totalKills: Number(s.totalKills) || 0,
       totalEpicKills: Number(s.totalEpicKills) || 0,
+      heroModeWins: Number(s.heroModeWins) || 0,
+      normalModeWins: Number(s.normalModeWins) || 0,
       maxLevel: Number(s.maxLevel) || 1,
       maxSurvivalSeconds: Number(s.maxSurvivalSeconds) || 0,
       avgSurvivalSeconds: avgSeconds,
@@ -193,6 +195,14 @@ const Stats = () => {
                   <div style={{ padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ opacity: 0.8, fontSize: 12 }}>Monstres épiques tués (total)</div>
                     <div style={{ fontSize: 22, fontWeight: 'bold' }}>{derived.totalEpicKills}</div>
+                  </div>
+                  <div style={{ padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ opacity: 0.8, fontSize: 12 }}>Mode Héros gagnés</div>
+                    <div style={{ fontSize: 22, fontWeight: 'bold' }}>{derived.heroModeWins}</div>
+                  </div>
+                  <div style={{ padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ opacity: 0.8, fontSize: 12 }}>Mode Normal terminés</div>
+                    <div style={{ fontSize: 22, fontWeight: 'bold' }}>{derived.normalModeWins}</div>
                   </div>
                   <div style={{ padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ opacity: 0.8, fontSize: 12 }}>Niveau max atteint</div>

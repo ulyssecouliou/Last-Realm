@@ -1,99 +1,111 @@
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
 import './PowerupSelector.css';
 
 const PowerupSelector = ({ onSelect, onCancel, playerClass }) => {
-  const [selectedPowerup, setSelectedPowerup] = useState(null);
 
-  const isTemplar = playerClass === 'templar';
   const isMeleeClass = playerClass === 'knight' || playerClass === 'templar';
 
-  const powerups = isTemplar
-    ? [
-        {
-          id: 'player_speed',
-          name: 'Vitesse',
-          description: '+50% vitesse de déplacement',
-          icon: '⚡',
-          color: '#FFD700'
-        },
-        {
-          id: 'damage_bonus',
-          name: 'Dégâts',
-          description: '+50% dégâts',
-          icon: '💥',
-          color: '#4ECDC4'
-        },
-        {
-          id: 'spear_count',
-          name: 'Nombre de lances',
-          description: '+1 lance',
-          icon: '🗡️',
-          color: '#EAB308'
-        },
-        {
-          id: 'attack_speed',
-          name: "Vitesse d'attaque",
-          description: '+25% vitesse d\'attaque',
-          icon: '✨',
-          color: '#A78BFA'
-        }
-      ]
-    : [
-        {
-          id: 'player_speed',
-          name: 'Vitesse du joueur',
-          description: '+50% vitesse de déplacement',
-          icon: '⚡',
-          color: '#FFD700'
-        },
-        {
-          id: 'fireball_size',
-          name: isMeleeClass ? 'Arme: taille + hitbox' : 'Boule de feu: taille + hitbox',
-          description: isMeleeClass ? "+50% taille + hitbox de l'arme" : '+50% taille + hitbox des boules de feu',
-          icon: '🔥',
-          color: '#FF6B6B'
-        },
-        {
-          id: 'damage_bonus',
-          name: 'Bonus de dégâts',
-          description: '+50% dégâts',
-          icon: '💥',
-          color: '#4ECDC4'
-        },
-        {
-          id: 'multi_shot',
-          name: isMeleeClass ? "Vitesse d'attaque" : 'Multi-tir',
-          description: isMeleeClass ? "+25% vitesse d'attaque" : '+1 projectile par attaque',
-          icon: '✨',
-          color: '#A78BFA'
-        }
-      ];
+  const weaponCountPowerup = useMemo(() => {
+    if (playerClass === 'templar') {
+      return { id: 'spear_count', name: 'Nombre de lances', description: '+1 lance', icon: '🗡️', color: '#EAB308' };
+    }
+    if (playerClass === 'mage' || playerClass === 'ranger') {
+      return { id: 'multi_shot', name: 'Multi-tir', description: '+1 projectile par attaque', icon: '✨', color: '#A78BFA' };
+    }
+    return { id: 'sword_radius', name: 'Portée de l\'épée', description: '+20% rayon de rotation', icon: '🌀', color: '#A78BFA' };
+  }, [playerClass]);
+
+  const universalPowerups = useMemo(() => ([
+    {
+      id: 'player_speed',
+      name: 'Vitesse',
+      description: '+20% vitesse de déplacement',
+      icon: '⚡',
+      color: '#FFD700'
+    },
+    {
+      id: 'damage_bonus',
+      name: 'Dégâts',
+      description: '+20% dégâts',
+      icon: '💥',
+      color: '#4ECDC4'
+    },
+    {
+      id: 'damage_reduction',
+      name: 'Armure',
+      description: '-15% dégâts subis',
+      icon: '🛡️',
+      color: '#60A5FA'
+    },
+    {
+      id: 'size_bonus',
+      name: 'Grosseur',
+      description: '+20% taille (arme ou projectiles)',
+      icon: '📏',
+      color: '#FF6B6B'
+    },
+    {
+      id: 'attack_speed',
+      name: "Vitesse d'attaque",
+      description: '+15% vitesse d\'attaque',
+      icon: '⏱️',
+      color: '#A78BFA'
+    },
+    weaponCountPowerup,
+    {
+      id: 'hp_up',
+      name: 'Vitalité',
+      description: '+20 PV max et +20 PV',
+      icon: '❤️',
+      color: '#F43F5E'
+    }
+  ]), [weaponCountPowerup]);
+
+  const choices = useMemo(() => {
+    const pool = universalPowerups;
+    const used = new Set();
+    const picked = [];
+    const max = Math.min(3, pool.length);
+
+    for (let guard = 0; guard < 50 && picked.length < max; guard += 1) {
+      const idx = Math.floor(Math.random() * pool.length);
+      const p = pool[idx];
+      if (!p || used.has(p.id)) continue;
+      used.add(p.id);
+      picked.push(p);
+    }
+
+    if (picked.length < max) {
+      for (const p of pool) {
+        if (!p || used.has(p.id)) continue;
+        used.add(p.id);
+        picked.push(p);
+        if (picked.length >= max) break;
+      }
+    }
+
+    return picked;
+  }, [universalPowerups, isMeleeClass]);
 
   const handleSelect = (powerupId) => {
-    setSelectedPowerup(powerupId);
-  };
-
-  const handleConfirm = () => {
-    if (selectedPowerup) {
-      onSelect(selectedPowerup);
-    }
+    onSelect(powerupId);
   };
 
   return (
     <div className="powerup-modal-overlay">
       <div className="powerup-modal">
         <h2 className="powerup-title">Choisir un Powerup</h2>
-        <p className="powerup-subtitle">Sélectionnez un seul powerup pour continuer</p>
+        <p className="powerup-subtitle">Cliquez sur un powerup pour continuer</p>
         
         <div className="powerup-grid">
-          {powerups.map((powerup) => (
+          {choices.map((powerup) => (
             <div
               key={powerup.id}
-              className={`powerup-card ${selectedPowerup === powerup.id ? 'selected' : ''}`}
+              className="powerup-card"
               onClick={() => handleSelect(powerup.id)}
               style={{
-                borderColor: selectedPowerup === powerup.id ? powerup.color : '#ddd',
-                backgroundColor: selectedPowerup === powerup.id ? `${powerup.color}15` : '#fff'
+                borderColor: powerup.color,
+                backgroundColor: `${powerup.color}10`
               }}
             >
               <div className="powerup-icon" style={{ color: powerup.color }}>
@@ -101,9 +113,6 @@ const PowerupSelector = ({ onSelect, onCancel, playerClass }) => {
               </div>
               <h3 className="powerup-name">{powerup.name}</h3>
               <p className="powerup-description">{powerup.description}</p>
-              {selectedPowerup === powerup.id && (
-                <div className="powerup-checkmark">✓</div>
-              )}
             </div>
           ))}
         </div>
@@ -114,13 +123,6 @@ const PowerupSelector = ({ onSelect, onCancel, playerClass }) => {
             onClick={onCancel}
           >
             Annuler
-          </button>
-          <button 
-            className="powerup-btn powerup-btn-confirm"
-            onClick={handleConfirm}
-            disabled={!selectedPowerup}
-          >
-            Confirmer
           </button>
         </div>
       </div>

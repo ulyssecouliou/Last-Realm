@@ -88,7 +88,7 @@ const Histoire = () => {
       <header className="story-header">
         <div className="story-header-inner">
           <div>
-            <h1>🕯️ Histoire d'Eldara</h1>
+            <h1><img className="ui-icon" src="/icon.png" alt="Histoire" /> Histoire d'Eldara</h1>
             <p>Chroniques du royaume et de la Brume d'Obsidienne.</p>
           </div>
           <div className="story-header-actions">
