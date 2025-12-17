@@ -70,147 +70,82 @@ const Wiki = () => {
         {
           title: 'Vitesse',
           image: '/projectile.png',
-          description: "Universel : augmente la vitesse de déplacement."
+          description: "Universel : +50% vitesse de déplacement."
         },
         {
           title: 'Dégâts',
           image: '/projectile.png',
-          description: "Universel : augmente les dégâts."
+          description: "Universel : +30% dégâts."
         },
         {
-          title: 'Vitalité',
+          title: 'Soin',
           image: '/projectile.png',
-          description: "Universel : +PV max et soigne immédiatement."
+          description: "Universel : +50 PV max et +30 PV immédiatement."
         },
         {
           title: 'Armure',
           image: '/projectile.png',
-          description: "Universel : réduit les dégâts subis."
-        },
-        {
-          title: "Vitesse d'attaque",
-          image: '/projectile.png',
-          description: "Universel : augmente la vitesse d'attaque (affecte le rythme d'attaque / rotation)."
-        },
-        {
-          title: 'Chevalier — Épée: dégâts',
-          image: '/epee.png',
-          description: "Unique : +dégâts de l'épée tournoyante."
+          description: "Universel : -20% dégâts subis."
         },
         {
           title: 'Chevalier — Épée: taille',
           image: '/epee.png',
-          description: "Unique : augmente la hitbox ET le sprite de l'épée."
-        },
-        {
-          title: 'Chevalier — Épée: portée',
-          image: '/epee.png',
-          description: "Unique : augmente le rayon de rotation de l'épée (porte plus loin autour du joueur)."
+          description: "Unique : +20% taille/hitbox de l'épée."
         },
         {
           title: 'Chevalier — Épée: rotation',
           image: '/epee.png',
-          description: "Unique : augmente la vitesse de rotation de l'épée."
+          description: "Unique : +30% vitesse de rotation de l'épée."
         },
         {
-          title: 'Chevalier — Garde',
-          image: '/projectile.png',
-          description: "Unique : réduit les dégâts subis."
-        },
-        {
-          title: 'Chevalier — Endurance',
-          image: '/projectile.png',
-          description: "Unique : bonus de vitesse pour mieux se repositionner."
-        },
-        {
-          title: 'Mage — Boule de feu: taille',
-          image: '/projectile.png',
-          description: "Unique : augmente la taille/hitbox des projectiles."
-        },
-        {
-          title: 'Mage — Multi-tir',
-          image: '/projectile.png',
-          description: "Unique : +1 projectile par attaque."
-        },
-        {
-          title: 'Mage — Arcane',
-          image: '/projectile.png',
-          description: "Unique : augmente les dégâts à distance."
-        },
-        {
-          title: 'Mage — Hâte',
-          image: '/projectile.png',
-          description: "Unique : augmente la vitesse d'attaque."
-        },
-        {
-          title: 'Mage — Focus',
-          image: '/projectile.png',
-          description: "Unique : augmente la vitesse des projectiles."
-        },
-        {
-          title: 'Mage — Barrière',
-          image: '/projectile.png',
-          description: "Unique : réduit les dégâts subis."
+          title: 'Chevalier — Double épée',
+          image: '/epee.png',
+          description: "Unique : +1 épée."
         },
         {
           title: 'Rôdeur — Multi-tir',
           image: '/fleche.png',
-          description: "Unique : +1 projectile par attaque."
+          description: "Unique : +1 flèche par attaque."
         },
         {
-          title: 'Rôdeur — Flèches: dégâts',
-          image: '/fleche.png',
-          description: "Unique : augmente les dégâts des flèches."
-        },
-        {
-          title: 'Rôdeur — Flèches: vitesse',
-          image: '/fleche.png',
-          description: "Unique : augmente la vitesse des flèches."
-        },
-        {
-          title: 'Rôdeur — Flèches: portée',
-          image: '/fleche.png',
-          description: "Unique : augmente la portée (distance max) des flèches."
-        },
-        {
-          title: 'Rôdeur — Agilité',
+          title: "Rôdeur — Vitesse d'attaque",
           image: '/projectile.png',
-          description: "Unique : bonus de vitesse."
+          description: "Unique : +30% tirs par seconde."
         },
         {
-          title: 'Rôdeur — Cuirasse',
+          title: 'Rôdeur — Projectiles: taille',
+          image: '/fleche.png',
+          description: "Unique : +20% taille des projectiles."
+        },
+        {
+          title: 'Arcaniste — Multi-tir',
           image: '/projectile.png',
-          description: "Unique : réduit les dégâts subis."
+          description: "Unique : +1 boule par attaque."
+        },
+        {
+          title: "Arcaniste — Vitesse d'attaque",
+          image: '/projectile.png',
+          description: "Unique : +30% tirs par seconde."
+        },
+        {
+          title: 'Arcaniste — Explosion',
+          image: '/projectile.png',
+          description: "Unique : +80% taille/rayon d'explosion."
         },
         {
           title: 'Templier — Nombre de lances',
           image: '/lance.png',
-          description: "Unique : +1 lance (jusqu'à une limite)."
+          description: "Unique : +1 lance (sans limite)."
         },
         {
-          title: 'Templier — Lance: dégâts',
+          title: 'Templier — Lance: taille',
           image: '/lance.png',
-          description: "Unique : augmente les dégâts des lances."
+          description: "Unique : +20% taille de la lance."
         },
         {
-          title: 'Templier — Lance: hitbox',
-          image: '/lance.png',
-          description: "Unique : augmente la taille de la pointe (hitbox)."
-        },
-        {
-          title: 'Templier — Lance: portée',
-          image: '/lance.png',
-          description: "Unique : augmente la portée des lances."
-        },
-        {
-          title: 'Templier — Serment',
+          title: "Templier — Lance: vitesse d'attaque",
           image: '/projectile.png',
-          description: "Unique : réduit les dégâts subis."
-        },
-        {
-          title: 'Templier — Ferveur',
-          image: '/projectile.png',
-          description: "Unique : augmente la vitesse d'attaque."
+          description: "Unique : +30% vitesse d'attaque de la lance."
         }
       ]
     },

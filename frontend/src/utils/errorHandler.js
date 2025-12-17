@@ -29,8 +29,12 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', (e) => {
     if (
       e.message?.includes('ResizeObserver loop completed') ||
-      e.message?.includes('ResizeObserver loop limit exceeded')
+      e.message?.includes('ResizeObserver loop limit exceeded') ||
+      e.message?.includes('ResizeObserver')
     ) {
+      if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+      }
       e.preventDefault();
       e.stopPropagation();
       return false;

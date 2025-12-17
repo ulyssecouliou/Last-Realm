@@ -156,7 +156,7 @@ router.post('/logout', authenticateToken, async (req, res) => {
 // PUT /api/auth/profile - Update user profile
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
-    const { username, firstName, lastName } = req.body;
+    const { username, firstName, lastName, aimModeMouse } = req.body;
     const userId = req.user.id;
     
     // Check if username is already taken by another user
@@ -175,10 +175,13 @@ router.put('/profile', authenticateToken, async (req, res) => {
       }
     }
     
-    const [updatedRowsCount] = await User.update(
-      { username, firstName, lastName },
-      { where: { id: userId } }
-    );
+    const updatePayload = { username, firstName, lastName };
+
+    if (typeof aimModeMouse === 'boolean') {
+      updatePayload.aimModeMouse = aimModeMouse;
+    }
+
+    const [updatedRowsCount] = await User.update(updatePayload, { where: { id: userId } });
     
     if (updatedRowsCount === 0) {
       return res.status(404).json({ error: 'User not found' });

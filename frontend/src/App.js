@@ -19,7 +19,7 @@ const MusicRouteSync = () => {
   useEffect(() => {
     const isGame = location.pathname === '/game';
     if (isGame) {
-      if (mode !== 'boss') {
+      if (mode !== 'boss' && mode !== 'hero') {
         setMusicMode('game');
       }
     } else {

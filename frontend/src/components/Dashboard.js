@@ -5,11 +5,17 @@ import axios from 'axios';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const { user, logout, isLoading } = useAuthStore();
+  const { user, logout, isLoading, updateProfile } = useAuthStore();
   const navigate = useNavigate();
   const [stats, setStats] = useState({ bestScore: 0, maxKills: 0, maxSurvivalSeconds: 0 });
   const [showClassModal, setShowClassModal] = useState(false);
   const [selectedMode, setSelectedMode] = useState('infinite');
+  const [aimModeMouse, setAimModeMouse] = useState(false);
+  const [aimModeSaving, setAimModeSaving] = useState(false);
+
+  useEffect(() => {
+    setAimModeMouse(Boolean(user?.aimModeMouse));
+  }, [user?.aimModeMouse]);
 
   useEffect(() => {
     let mounted = true;
@@ -75,6 +81,17 @@ const Dashboard = () => {
     navigate('/stats');
   };
 
+  const handleToggleAimMode = async () => {
+    const next = !aimModeMouse;
+    setAimModeMouse(next);
+    setAimModeSaving(true);
+    try {
+      await updateProfile({ aimModeMouse: next });
+    } finally {
+      setAimModeSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="dashboard-loading">
@@ -136,6 +153,30 @@ const Dashboard = () => {
               <button onClick={handleViewStats} className="secondary-button">
                 📊 Voir les statistiques
               </button>
+            </div>
+
+            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 700, opacity: 0.95 }}>
+                Mode de visée
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleToggleAimMode}
+                disabled={aimModeSaving}
+                title={
+                  aimModeMouse
+                    ? "Visée à la souris (Rôdeur/Arcaniste/Templier)"
+                    : "Visée automatique (par défaut)"
+                }
+              >
+                {aimModeMouse ? '🖱️ Souris' : '🎯 Auto'}
+              </button>
+              <div style={{ opacity: 0.8, fontSize: 13 }}>
+                {aimModeMouse
+                  ? 'Rôdeur / Arcaniste / Templier visent vers la souris.'
+                  : 'Comportement actuel: vise automatiquement les ennemis.'}
+              </div>
             </div>
           </div>
           

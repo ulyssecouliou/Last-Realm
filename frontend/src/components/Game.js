@@ -5,7 +5,7 @@ import axios from 'axios';
 import PowerupSelector from './PowerupSelector';
 import { useMusic } from '../utils/MusicProvider';
 
-  // Classe Player avec système de vie
+// Classe Player avec système de vie
 class Player {
   constructor(x, y) {
     this.x = x;
@@ -32,6 +32,7 @@ class Player {
     this.rangedDamageMultiplier = 1;
     this.projectileSpeedMultiplier = 1;
     this.projectileRangeMultiplier = 1;
+    this.explosionSizeMultiplier = 1;
     // Système d'expérience
     this.level = 1;
     this.experience = 0;
@@ -180,43 +181,50 @@ class Spear {
     }
   }
 
-  update(monsters = []) {
+  update(monsters) {
     if (!this.player) return;
 
-    let best = null;
-    let bestDist = Infinity;
-    for (const m of monsters) {
-      if (!m || !m.isAlive) continue;
-      const dx = m.x - this.player.x;
-      const dy = m.y - this.player.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < bestDist) {
-        bestDist = d;
-        best = m;
-      }
-    }
+    const useMouseAim = Boolean(this.player?.aimModeMouse);
+    const mouseX = Number(this.player?.aimTargetX);
+    const mouseY = Number(this.player?.aimTargetY);
 
-    if (best && bestDist > 0) {
-      this.angle = Math.atan2(best.y - this.player.y, best.x - this.player.x);
+    if (useMouseAim && Number.isFinite(mouseX) && Number.isFinite(mouseY)) {
+      const mdx = mouseX - this.player.x;
+      const mdy = mouseY - this.player.y;
+      const md = Math.sqrt(mdx * mdx + mdy * mdy);
+      if (md > 0.001) {
+        this.angle = Math.atan2(mdy, mdx);
+      }
+    } else {
+      let best = null;
+      let bestDist = Infinity;
+      for (const m of monsters || []) {
+        if (!m || !m.isAlive) continue;
+        const dx = m.x - this.player.x;
+        const dy = m.y - this.player.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < bestDist) {
+          bestDist = d;
+          best = m;
+        }
+      }
+
+      if (best) {
+        this.angle = Math.atan2(best.y - this.player.y, best.x - this.player.x);
+      }
     }
 
     const finalAngle = this.angle + (Number(this.angleOffset) || 0);
 
     const rotationMultiplier = Math.max(0.25, Number(this.player?.rotationSpeedMultiplier) || 1);
     this.phase += this.thrustSpeed * rotationMultiplier;
-    if (this.phase > Math.PI * 2) this.phase -= Math.PI * 2;
 
-    const thrust = (Math.sin(this.phase) * 0.5 + 0.5) * this.thrustDistance;
-    const dist = this.baseDistance + thrust;
-    const ux = Math.cos(finalAngle);
-    const uy = Math.sin(finalAngle);
+    const thrust = this.baseDistance + (Math.sin(this.phase) * this.thrustDistance);
 
-    this.x = this.player.x + ux * dist;
-    this.y = this.player.y + uy * dist;
-
-    const tipDist = dist + 55;
-    this.tipX = this.player.x + ux * tipDist;
-    this.tipY = this.player.y + uy * tipDist;
+    this.x = this.player.x + Math.cos(finalAngle) * thrust;
+    this.y = this.player.y + Math.sin(finalAngle) * thrust;
+    this.tipX = this.x;
+    this.tipY = this.y;
 
     if (this.sprite) {
       this.sprite.x = this.x;
@@ -598,7 +606,6 @@ class Sword {
 }
 
 // Classe Powerup
-// Classe Powerup
 class Powerup {
   constructor(x, y, type) {
     this.x = x;
@@ -650,6 +657,10 @@ const Game = () => {
   const projectileTextureRef = useRef(null);
   const playerProjectileTextureRef = useRef(null);
   const rangerProjectileTextureRef = useRef(null);
+  const explosionsRef = useRef([]);
+  const swordsRef = useRef([]);
+  const weaponStatsRef = useRef(null);
+  const swordTextureRef = useRef(null);
   const spearTextureRef = useRef(null);
   const gameStartAtRef = useRef(0);
   const pausedAtRef = useRef(null);
@@ -678,6 +689,7 @@ const Game = () => {
   const createBossRef = useRef(null);
   const lasersRef = useRef([]);
   const bossLaserSideIndexRef = useRef(0);
+  const bossLaserLastAtRef = useRef(0);
   const bossTextureRef = useRef(null);
   const laserTextureRef = useRef(null);
   const bossHudRef = useRef(null);
@@ -694,8 +706,21 @@ const Game = () => {
   const powerupSelectorTimeoutRef = useRef(null);
   const powerupCollisionDetectedRef = useRef(false);
   const gameWorldRef = useRef(null);
+  const aimModeMouseRef = useRef(false);
+  const mouseWorldRef = useRef({ x: null, y: null });
+  const pointerMoveHandlerRef = useRef(null);
   const navigate = useNavigate();
   const { setMusicMode } = useMusic();
+
+  const readAimModeFromStorage = () => {
+    try {
+      const raw = localStorage.getItem('auth-storage');
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Boolean(parsed?.state?.user?.aimModeMouse);
+    } catch (e) {
+      return false;
+    }
+  };
 
   // Constantes de la map (zoom x4 de la taille de base)
   const MAP_WIDTH = 2400; // 4x plus grande que 600x600
@@ -728,6 +753,24 @@ const Game = () => {
     fallback.drawRect(-8, -120, 16, 240);
     fallback.endFill();
     return fallback;
+  };
+
+  const spawnFireballImpact = (x, y) => {
+    const gameWorld = gameWorldRef.current;
+    if (!gameWorld) return;
+
+    const explosionMult = Math.max(0.25, Number(playerRef.current?.explosionSizeMultiplier) || 1);
+
+    const gfx = new PIXI.Graphics();
+    gfx.beginFill(0xff9f1a, 0.55);
+    gfx.drawCircle(0, 0, 27 * explosionMult);
+    gfx.endFill();
+    gfx.x = x;
+    gfx.y = y;
+    gfx.zIndex = 9999;
+
+    gameWorld.addChild(gfx);
+    explosionsRef.current.push({ gfx, startMs: Date.now(), durationMs: 220 });
   };
 
   const createRangerProjectileSprite = () => {
@@ -995,6 +1038,41 @@ const Game = () => {
         gameWorldRef.current = gameWorld;
         app.stage.addChild(gameWorld);
 
+        // Mode de visée (par défaut = auto). On lit d'abord le storage, puis on rafraîchit via /auth/me.
+        aimModeMouseRef.current = readAimModeFromStorage();
+        try {
+          const res = await axios.get('/auth/me');
+          const mode = Boolean(res?.data?.user?.aimModeMouse);
+          aimModeMouseRef.current = mode;
+        } catch (e) {
+          // ignore
+        }
+
+        // Tracking souris (coordonnées monde)
+        try {
+          app.stage.eventMode = 'static';
+          app.stage.hitArea = app.screen;
+        } catch (e) {
+          // ignore
+        }
+
+        const handlePointerMove = (event) => {
+          const g = event?.global;
+          const gx = Number(g?.x);
+          const gy = Number(g?.y);
+          if (!Number.isFinite(gx) || !Number.isFinite(gy)) return;
+          mouseWorldRef.current.x = gx + (Number(cameraRef.current?.x) || 0);
+          mouseWorldRef.current.y = gy + (Number(cameraRef.current?.y) || 0);
+        };
+
+        pointerMoveHandlerRef.current = handlePointerMove;
+
+        try {
+          app.stage.on('pointermove', handlePointerMove);
+        } catch (e) {
+          // ignore
+        }
+
         // Créer un conteneur UI séparé qui ne bouge pas avec la caméra
         const uiContainer = new PIXI.Container();
 
@@ -1023,6 +1101,9 @@ const Game = () => {
 
         // Créer le joueur au centre de la map
         const player = new Player(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+        if (gameModeRef.current === 'boss') {
+          player.speed *= 1.5;
+        }
         playerRef.current = player;
 
         gameStartAtRef.current = Date.now();
@@ -1308,10 +1389,13 @@ const Game = () => {
           sword.rotationSpeed = weaponStats.rotationSpeed;
           swordRef.current = sword;
           spearsRef.current = [];
+          swordsRef.current = [sword];
+          weaponStatsRef.current = weaponStats;
 
           // Charger le sprite de l'épée
           try {
             const swordTexture = await PIXI.Assets.load('/epee.png');
+            swordTextureRef.current = swordTexture;
             const swordSprite = new PIXI.Sprite(swordTexture);
             swordSprite.anchor.set(0.5);
             swordSprite.scale.set(0.5); // Taille de l'épée agrandie x10 (0.05 * 10 = 0.5)
@@ -1337,10 +1421,12 @@ const Game = () => {
           console.log('Hitbox rectangulaire de l\'épée créée avec dimensions:', sword.hitboxWidth, 'x', sword.hitboxHeight);
         } else if (playerClassRef.current === 'templar') {
           swordRef.current = null;
+          swordsRef.current = [];
           spearsRef.current = [];
           addSpearInstance(0);
         } else {
           swordRef.current = null;
+          swordsRef.current = [];
           spearsRef.current = [];
         }
 
@@ -1470,9 +1556,11 @@ const Game = () => {
               return;
             }
 
-            setMusicMode('boss');
+            setMusicMode(gameModeRef.current === 'boss' ? 'hero' : 'boss');
 
             bossesRef.current = [];
+
+            bossLaserLastAtRef.current = 0;
 
             const howMany = Math.max(1, Math.min(6, Number(count) || 1));
             const spawnNow = Date.now();
@@ -1602,9 +1690,19 @@ const Game = () => {
             // Configuration des couleurs
             const powerupColors = {
               player_speed: 0xFFD700,
-              fireball_size: 0xFF6B6B,
               damage_bonus: 0x4ECDC4,
-              multi_shot: 0xA78BFA
+              damage_reduction: 0x60A5FA,
+              hp_up: 0xF43F5E,
+              multi_shot: 0xEAB308,
+              attack_speed: 0xA78BFA,
+              size_bonus: 0xFF6B6B,
+              sword_size: 0xFF6B6B,
+              sword_spin: 0xA78BFA,
+              sword_count: 0xEAB308,
+              spear_count: 0xEAB308,
+              spear_size: 0xFF6B6B,
+              spear_speed: 0xA78BFA,
+              explosion_size: 0xFF6B6B
             };
             
             // Créer le sprite du powerup
@@ -1662,9 +1760,13 @@ const Game = () => {
               const y = Math.random() * MAP_HEIGHT;
 
               // Type de powerup aléatoire
-              const types = playerClassRef.current === 'templar'
-                ? ['player_speed', 'damage_bonus', 'spear_count', 'attack_speed']
-                : ['player_speed', 'fireball_size', 'damage_bonus', 'multi_shot'];
+              const types = playerClassRef.current === 'knight'
+                ? ['player_speed', 'damage_bonus', 'hp_up', 'damage_reduction', 'sword_size', 'sword_spin', 'sword_count']
+                : playerClassRef.current === 'templar'
+                  ? ['player_speed', 'damage_bonus', 'hp_up', 'damage_reduction', 'spear_count', 'spear_size', 'spear_speed']
+                  : playerClassRef.current === 'ranger'
+                    ? ['player_speed', 'damage_bonus', 'hp_up', 'damage_reduction', 'multi_shot', 'attack_speed', 'size_bonus']
+                    : ['player_speed', 'damage_bonus', 'hp_up', 'damage_reduction', 'multi_shot', 'attack_speed', 'explosion_size'];
               const randomType = types[Math.floor(Math.random() * types.length)];
 
               createPowerup(x, y, randomType);
@@ -1673,6 +1775,7 @@ const Game = () => {
         }
 
         if (gameModeRef.current === 'boss') {
+          setMusicMode('hero');
           bossModePicksLeftRef.current = 10;
           setBossModePicksDone(0);
           setCurrentPowerup({ type: 'boss_mode_pick', isLevelUp: true });
@@ -1718,8 +1821,13 @@ const Game = () => {
             // Mettre à jour le joueur avec les limites de la map
             playerRef.current.update(keysRef.current, MAP_WIDTH, MAP_HEIGHT);
             
-            // Mettre à jour l'épée avec les paramètres pour la mise à jour dynamique
-            if (swordRef.current) {
+            // Mettre à jour les épées (si chevalier)
+            if (swordsRef.current && swordsRef.current.length > 0) {
+              swordsRef.current.forEach((sw) => {
+                if (sw) sw.update(gameWorld, createSwordHitboxSprite);
+              });
+            } else if (swordRef.current) {
+              // fallback (ancien chemin)
               swordRef.current.update(gameWorld, createSwordHitboxSprite);
             }
 
@@ -1729,7 +1837,7 @@ const Game = () => {
               });
             }
 
-            // Magicien / Rodeur: tirer sur le monstre le plus proche
+            // Magicien / Rodeur: tirer sur le monstre le plus proche (ou direction souris si activé)
             if (playerClassRef.current === 'mage' || playerClassRef.current === 'ranger') {
               const nowMsMage = Date.now();
               const baseMageCooldownMs = 1950;
@@ -1753,8 +1861,12 @@ const Game = () => {
                 const speedMult = Math.max(0.25, Number(playerRef.current?.projectileSpeedMultiplier) || 1);
                 const attackRange = (playerClassRef.current === 'ranger' ? 700 : 520) * rangeMult;
                 if (best && bestDist > 0 && bestDist <= attackRange) {
-                  const dx = best.x - playerRef.current.x;
-                  const dy = best.y - playerRef.current.y;
+                  const useMouseAim = Boolean(aimModeMouseRef.current);
+                  const mx = Number(mouseWorldRef.current?.x);
+                  const my = Number(mouseWorldRef.current?.y);
+
+                  const dx = useMouseAim && Number.isFinite(mx) ? (mx - playerRef.current.x) : (best.x - playerRef.current.x);
+                  const dy = useMouseAim && Number.isFinite(my) ? (my - playerRef.current.y) : (best.y - playerRef.current.y);
                   const dist = Math.sqrt(dx * dx + dy * dy);
                   const speed = (playerClassRef.current === 'ranger' ? 6.2 : 4.2) * speedMult;
                   const sizeMultiplier = playerRef.current?.fireballSizeMultiplier || 1;
@@ -1789,6 +1901,7 @@ const Game = () => {
                         const vy = (dyT / distT) * speed;
 
                         const fireball = new PlayerProjectile(playerRef.current.x, playerRef.current.y, vx, vy, sizeMultiplier, damageMultiplier);
+                        fireball.isFireball = true;
                         const fireballSprite = createPlayerProjectileSprite();
                         try { fireballSprite.scale.set(fireballSprite.scale.x * sizeMultiplier, fireballSprite.scale.y * sizeMultiplier); } catch (e) {}
                         fireball.setSprite(fireballSprite);
@@ -1846,6 +1959,15 @@ const Game = () => {
                 }
               }
             }
+
+            // Templier: injecter la cible souris dans le player (consommée par Spear.update)
+            if (playerClassRef.current === 'templar' && playerRef.current) {
+              const mx = Number(mouseWorldRef.current?.x);
+              const my = Number(mouseWorldRef.current?.y);
+              playerRef.current.aimModeMouse = Boolean(aimModeMouseRef.current);
+              playerRef.current.aimTargetX = Number.isFinite(mx) ? mx : null;
+              playerRef.current.aimTargetY = Number.isFinite(my) ? my : null;
+            }
             
             // Mettre à jour tous les powerups (sans spam de logs)
             powerupsRef.current.forEach((powerup, idx) => {
@@ -1889,6 +2011,58 @@ const Game = () => {
                     ? m.takeDamage(p.damage, Date.now())
                     : m.takeDamage(p.damage, Date.now(), true);
                   if (!(p instanceof RangerArrow)) {
+                    if (p.isFireball) {
+                      spawnFireballImpact(p.x, p.y);
+
+                      const aoeDamage = (Number(p.damage) || 0) * 0.5;
+                      const explosionMult = Math.max(0.25, Number(playerRef.current?.explosionSizeMultiplier) || 1);
+                      const aoeRadius = (Number(p.radius) || 12) * 3.75 * explosionMult;
+
+                      for (const other of monstersRef.current) {
+                        if (!other || !other.isAlive) continue;
+                        if (other === m) continue;
+                        const ddx = other.x - p.x;
+                        const ddy = other.y - p.y;
+                        const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+                        if (dist > aoeRadius) continue;
+
+                        const killedByAoe = other.takeDamage(aoeDamage, Date.now());
+                        if (killedByAoe) {
+                          killsRef.current += 1;
+                          if (other instanceof EpicMonster) {
+                            epicKillsRef.current += 1;
+                          }
+
+                          if (other instanceof BossMonster && gameModeRef.current === 'normal' && !victoryShownRef.current) {
+                            victoryShownRef.current = true;
+                            const endNowMs = Date.now();
+                            const endPausedExtra = pausedAtRef.current ? (endNowMs - pausedAtRef.current) : 0;
+                            const timeSeconds = Math.max(1, Math.floor(Math.max(0, endNowMs - gameStartAtRef.current - (pausedTotalMsRef.current || 0) - endPausedExtra) / 1000));
+                            const kills = killsRef.current;
+                            setFinalTimeSeconds(timeSeconds);
+                            setFinalKills(kills);
+                            setFinalScore(kills * timeSeconds);
+                            setShowVictory(true);
+
+                            const runMaxLevel = playerRef.current?.level || 1;
+                            try {
+                              axios.post('/stats/run', { kills, epicKills: epicKillsRef.current, timeSeconds, maxLevel: runMaxLevel, heroModeWin: false, normalModeWin: true }).catch((e) => {
+                                console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                              });
+                            } catch (e) {
+                              console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                            }
+                          }
+
+                          const leveledUpAoe = playerRef.current.gainExperience(25);
+                          if (leveledUpAoe) {
+                            setCurrentPowerup({ type: 'level_up', isLevelUp: true });
+                            setShowPowerupSelector(true);
+                            powerupCollisionDetectedRef.current = true;
+                          }
+                        }
+                      }
+                    }
                     p.destroy();
                   }
                   if (isDead) {
@@ -1920,7 +2094,9 @@ const Game = () => {
 
                     const leveledUp = playerRef.current.gainExperience(25);
                     if (leveledUp) {
-                      setCurrentPowerup({ type: 'level_up', isLevelUp: true });
+                      // Déclencher un powerup automatiquement
+                      console.log('🎉 Niveau supérieur! Powerup automatique!');
+                      setCurrentPowerup({ type: 'level_up', isLevelUp: true }); // Powerup spécial de niveau
                       setShowPowerupSelector(true);
                       powerupCollisionDetectedRef.current = true;
                     }
@@ -1929,6 +2105,28 @@ const Game = () => {
                 }
               }
             });
+
+            // Effets d'explosion (boules de feu)
+            if (explosionsRef.current.length > 0) {
+              const nowFx = Date.now();
+              explosionsRef.current = explosionsRef.current.filter((fx) => {
+                if (!fx || !fx.gfx) return false;
+                const t = (nowFx - (fx.startMs || 0)) / Math.max(1, fx.durationMs || 1);
+                if (t >= 1) {
+                  if (fx.gfx.parent) fx.gfx.parent.removeChild(fx.gfx);
+                  try {
+                    fx.gfx.destroy();
+                  } catch (e) {
+                    // ignore
+                  }
+                  return false;
+                }
+                const scale = 0.6 + t * 1.3;
+                fx.gfx.scale.set(scale);
+                fx.gfx.alpha = 0.55 * (1 - t);
+                return true;
+              });
+            }
 
             // Mettre à jour la caméra pour suivre le joueur
             updateCamera();
@@ -2068,43 +2266,29 @@ const Game = () => {
                 }
 
                 if (monster instanceof BossMonster) {
-                  if (nowMs - monster.lastLaserAt >= monster.laserCooldownMs) {
-                    monster.lastLaserAt = nowMs;
-                    const side = bossLaserSideIndexRef.current % 4;
-                    bossLaserSideIndexRef.current = (bossLaserSideIndexRef.current + 1) % 4;
-                    createLaserAttack(side);
+                  if (gameModeRef.current !== 'boss') {
+                    if (nowMs - monster.lastLaserAt >= monster.laserCooldownMs) {
+                      monster.lastLaserAt = nowMs;
+                      const side = bossLaserSideIndexRef.current % 4;
+                      bossLaserSideIndexRef.current = (bossLaserSideIndexRef.current + 1) % 4;
+                      createLaserAttack(side);
+                    }
                   }
                 }
                 
-                // Vérifier collision avec l'épée
-                if (swordRef.current && swordRef.current.checkCollision(monster)) {
-                  const damageMultiplier = playerRef.current?.damageMultiplier || 1;
-                  const damage = swordRef.current.damage * Math.max(0.25, Number(damageMultiplier) || 1);
-                  const isDead = monster.takeDamage(damage, Date.now());
-                  if (isDead) {
-                    console.log('Monstre tué par l\'épée!');
-                    killsRef.current += 1;
-                    if (monster instanceof EpicMonster) {
-                      epicKillsRef.current += 1;
-                    }
-                    if (monster instanceof BossMonster && gameModeRef.current === 'normal' && !victoryShownRef.current) {
-                      victoryShownRef.current = true;
-                      const endNowMs = Date.now();
-                      const endPausedExtra = pausedAtRef.current ? (endNowMs - pausedAtRef.current) : 0;
-                      const timeSeconds = Math.max(1, Math.floor(Math.max(0, endNowMs - gameStartAtRef.current - (pausedTotalMsRef.current || 0) - endPausedExtra) / 1000));
-                      const kills = killsRef.current;
-                      setFinalTimeSeconds(timeSeconds);
-                      setFinalKills(kills);
-                      setFinalScore(kills * timeSeconds);
-                      setShowVictory(true);
-
-                      const runMaxLevel = playerRef.current?.level || 1;
-                      try {
-                        axios.post('/stats/run', { kills, epicKills: epicKillsRef.current, timeSeconds, maxLevel: runMaxLevel, heroModeWin: false, normalModeWin: true }).catch((e) => {
-                          console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
-                        });
-                      } catch (e) {
-                        console.log('Erreur envoi stats:', e?.response?.data?.error || e.message);
+                // Vérifier collision avec l'épée (1 ou plusieurs)
+                const swordsToCheck = (swordsRef.current && swordsRef.current.length > 0) ? swordsRef.current : (swordRef.current ? [swordRef.current] : []);
+                for (const sw of swordsToCheck) {
+                  if (!sw) continue;
+                  if (sw.checkCollision(monster)) {
+                    const damageMultiplier = playerRef.current?.damageMultiplier || 1;
+                    const damage = sw.damage * Math.max(0.25, Number(damageMultiplier) || 1);
+                    const isDead = monster.takeDamage(damage, Date.now());
+                    if (isDead) {
+                      console.log('Monstre tué par l\'épée!');
+                      killsRef.current += 1;
+                      if (monster instanceof EpicMonster) {
+                        epicKillsRef.current += 1;
                       }
                     }
                     // Donner de l'expérience au joueur
@@ -2241,6 +2425,28 @@ const Game = () => {
 
             // Nettoyer les monstres morts
             monstersRef.current = monstersRef.current.filter(monster => monster.isAlive);
+
+            // Mode Héros (boss): un seul "contrôleur" lance les attaques, cadence selon le nombre de boss vivants.
+            if (gameModeRef.current === 'boss') {
+              const aliveBosses = (bossesRef.current || []).filter((b) => b && b.isAlive);
+              const aliveCount = aliveBosses.length;
+              if (aliveCount > 0) {
+                const multiplier = Math.max(1, Math.min(3, 4 - aliveCount));
+                const baseCooldownMs = 750;
+                const effectiveCooldownMs = Math.max(60, Math.floor(baseCooldownMs / multiplier));
+
+                if (bossLaserLastAtRef.current <= 0) {
+                  bossLaserLastAtRef.current = nowMs;
+                }
+
+                if (nowMs - bossLaserLastAtRef.current >= effectiveCooldownMs) {
+                  bossLaserLastAtRef.current = nowMs;
+                  const side = bossLaserSideIndexRef.current % 4;
+                  bossLaserSideIndexRef.current = (bossLaserSideIndexRef.current + 1) % 4;
+                  createLaserAttack(side);
+                }
+              }
+            }
 
             if (gameModeRef.current === 'boss') {
               const aliveBosses = (bossesRef.current || []).filter((b) => b && b.isAlive);
@@ -2391,6 +2597,14 @@ const Game = () => {
         const cleanup = () => {
           window.removeEventListener('keydown', handleKeyDown);
           window.removeEventListener('keyup', handleKeyUp);
+          try {
+            const handler = pointerMoveHandlerRef.current;
+            if (handler && appRef.current?.stage?.off) {
+              appRef.current.stage.off('pointermove', handler);
+            }
+          } catch (e) {
+            // ignore
+          }
           if (monsterSpawnInterval) {
             clearInterval(monsterSpawnInterval);
           }
@@ -2434,6 +2648,10 @@ const Game = () => {
     const isMeleeClass = currentClass === 'knight' || currentClass === 'templar';
     const isTemplar = currentClass === 'templar';
 
+    const swordsToAffect = (swordsRef.current && swordsRef.current.length > 0)
+      ? swordsRef.current
+      : (swordRef.current ? [swordRef.current] : []);
+
     const addSpearInstanceFromPowerup = (angleOffset = 0) => {
       const gameWorld = gameWorldRef.current;
       if (!gameWorld || !playerRef.current) return;
@@ -2451,16 +2669,60 @@ const Game = () => {
 
       spearsRef.current.push(spear);
     };
+
+    const addSwordInstanceFromPowerup = () => {
+      const gameWorld = gameWorldRef.current;
+      if (!gameWorld || !playerRef.current) return;
+
+      const base = weaponStatsRef.current || {
+        damage: 10,
+        hitboxWidth: 50,
+        hitboxHeight: 160,
+        rotationSpeed: 0.005,
+        radius: 120
+      };
+
+      const sword = new Sword(playerRef.current, base.radius);
+      sword.damage = base.damage;
+      sword.hitboxWidth = base.hitboxWidth;
+      sword.hitboxHeight = base.hitboxHeight;
+      sword.rotationSpeed = base.rotationSpeed;
+
+      // Décaler l'angle initial pour éviter la superposition parfaite
+      sword.angle = Math.random() * Math.PI * 2;
+
+      if (swordTextureRef.current) {
+        const swordSprite = new PIXI.Sprite(swordTextureRef.current);
+        swordSprite.anchor.set(0.5);
+        swordSprite.scale.set(0.5);
+        sword.setSprite(swordSprite);
+        gameWorld.addChild(swordSprite);
+      } else {
+        const fallbackSword = new PIXI.Graphics();
+        fallbackSword.beginFill(0xC0C0C0);
+        fallbackSword.drawRect(-20, -150, 40, 300);
+        fallbackSword.endFill();
+        sword.setSprite(fallbackSword);
+        gameWorld.addChild(fallbackSword);
+      }
+
+      const swordHitbox = createSwordHitboxSprite(sword.hitboxWidth, sword.hitboxHeight, 0x0000ff, 0.2);
+      sword.setHitboxSprite(swordHitbox);
+      gameWorld.addChild(swordHitbox);
+
+      swordsRef.current = [...(swordsRef.current || []), sword];
+      swordRef.current = swordsRef.current[0] || sword;
+    };
     
     // Appliquer l'effet du powerup
     switch(powerupType) {
       case 'player_speed':
-        playerRef.current.speedMultiplier *= 1.2;
+        playerRef.current.speedMultiplier *= 1.5;
         console.log('Speed multiplier:', playerRef.current.speedMultiplier);
         break;
       case 'hp_up':
-        playerRef.current.maxHealth = (Number(playerRef.current.maxHealth) || 100) + 20;
-        playerRef.current.health = Math.min(playerRef.current.maxHealth, (Number(playerRef.current.health) || 0) + 20);
+        playerRef.current.maxHealth = (Number(playerRef.current.maxHealth) || 100) + 50;
+        playerRef.current.health = Math.min(playerRef.current.maxHealth, (Number(playerRef.current.health) || 0) + 30);
         if (healthDisplayRef.current && healthDisplayRef.current.text) {
           const healthText = healthDisplayRef.current.container ?
             `${playerRef.current.health}/${playerRef.current.maxHealth}` :
@@ -2469,40 +2731,7 @@ const Game = () => {
         }
         break;
       case 'damage_reduction':
-        playerRef.current.damageTakenMultiplier *= 0.85;
-        break;
-      case 'size_bonus':
-        if (isMeleeClass) {
-          if (swordRef.current) {
-            const scaleFactor = 1.2;
-            swordRef.current.hitboxWidth = Math.round((Number(swordRef.current.hitboxWidth) || 0) * scaleFactor);
-            swordRef.current.hitboxHeight = Math.round((Number(swordRef.current.hitboxHeight) || 0) * scaleFactor);
-            if (swordRef.current.sprite && swordRef.current.sprite.scale) {
-              swordRef.current.sprite.scale.set(
-                swordRef.current.sprite.scale.x * scaleFactor,
-                swordRef.current.sprite.scale.y * scaleFactor
-              );
-            }
-          }
-          if (spearsRef.current && spearsRef.current.length > 0) {
-            const gameWorld = gameWorldRef.current;
-            spearsRef.current.forEach((s) => {
-              if (!s) return;
-              s.tipRadius = (Number(s.tipRadius) || 22) * 1.2;
-              if (gameWorld) {
-                if (s.hitboxSprite && s.hitboxSprite.parent) {
-                  s.hitboxSprite.parent.removeChild(s.hitboxSprite);
-                }
-                const newTip = createHitboxSprite(s.tipRadius, 0x00ffff, 0.18);
-                s.setHitboxSprite(newTip);
-                gameWorld.addChild(newTip);
-              }
-            });
-          }
-        } else {
-          playerRef.current.fireballSizeMultiplier *= 1.2;
-          console.log('Fireball size multiplier:', playerRef.current.fireballSizeMultiplier);
-        }
+        playerRef.current.damageTakenMultiplier *= 0.8;
         break;
       case 'projectile_speed':
         playerRef.current.projectileSpeedMultiplier *= 1.25;
@@ -2510,128 +2739,56 @@ const Game = () => {
       case 'projectile_range':
         playerRef.current.projectileRangeMultiplier *= 1.25;
         break;
-      case 'fireball_size':
-        if (isMeleeClass) {
-          if (swordRef.current) {
-            const scaleFactor = 1.5;
-            swordRef.current.hitboxWidth = Math.round((Number(swordRef.current.hitboxWidth) || 0) * scaleFactor);
-            swordRef.current.hitboxHeight = Math.round((Number(swordRef.current.hitboxHeight) || 0) * scaleFactor);
-            if (swordRef.current.sprite && swordRef.current.sprite.scale) {
-              swordRef.current.sprite.scale.set(
-                swordRef.current.sprite.scale.x * scaleFactor,
-                swordRef.current.sprite.scale.y * scaleFactor
-              );
-            }
-          }
-          if (spearsRef.current && spearsRef.current.length > 0) {
-            const gameWorld = gameWorldRef.current;
-            spearsRef.current.forEach((s) => {
-              if (!s) return;
-              s.tipRadius = (Number(s.tipRadius) || 22) * 1.5;
-              s.thrustDistance = (Number(s.thrustDistance) || 75) * 1.2;
-              if (gameWorld) {
-                if (s.hitboxSprite && s.hitboxSprite.parent) {
-                  s.hitboxSprite.parent.removeChild(s.hitboxSprite);
-                }
-                const newTip = createHitboxSprite(s.tipRadius, 0x00ffff, 0.18);
-                s.setHitboxSprite(newTip);
-                gameWorld.addChild(newTip);
-              }
-            });
-          }
-        } else {
-          playerRef.current.fireballSizeMultiplier *= 1.5;
-          console.log('Fireball size multiplier:', playerRef.current.fireballSizeMultiplier);
-        }
-        break;
       case 'damage_bonus':
-        playerRef.current.damageMultiplier *= 1.2;
+        playerRef.current.damageMultiplier *= 1.3;
         console.log('Damage multiplier:', playerRef.current.damageMultiplier);
         break;
-      case 'sword_damage':
-        if (swordRef.current) {
-          swordRef.current.damage *= 1.2;
-        }
-        break;
       case 'sword_size':
-        if (swordRef.current) {
-          const scaleFactor = 1.25;
-          swordRef.current.hitboxWidth = Math.round((Number(swordRef.current.hitboxWidth) || 0) * scaleFactor);
-          swordRef.current.hitboxHeight = Math.round((Number(swordRef.current.hitboxHeight) || 0) * scaleFactor);
-          if (swordRef.current.sprite && swordRef.current.sprite.scale) {
-            swordRef.current.sprite.scale.set(
-              swordRef.current.sprite.scale.x * scaleFactor,
-              swordRef.current.sprite.scale.y * scaleFactor
-            );
-          }
-        }
-        break;
-      case 'sword_radius':
-        if (swordRef.current) {
-          swordRef.current.radius *= 1.2;
+        {
+          const scaleFactor = 1.2;
+          swordsToAffect.forEach((sw) => {
+            if (!sw) return;
+            sw.hitboxWidth = Math.round((Number(sw.hitboxWidth) || 0) * scaleFactor);
+            sw.hitboxHeight = Math.round((Number(sw.hitboxHeight) || 0) * scaleFactor);
+            if (sw.sprite && sw.sprite.scale) {
+              sw.sprite.scale.set(sw.sprite.scale.x * scaleFactor, sw.sprite.scale.y * scaleFactor);
+            }
+          });
         }
         break;
       case 'sword_spin':
-        playerRef.current.rotationSpeedMultiplier *= 1.15;
-        break;
-      case 'knight_guard':
-        playerRef.current.damageTakenMultiplier *= 0.9;
-        break;
-      case 'knight_speed':
-        playerRef.current.speedMultiplier *= 1.2;
-        break;
-      case 'multi_shot':
-        if (isMeleeClass) {
-          playerRef.current.rotationSpeedMultiplier *= 1.15;
-          console.log('Attack speed multiplier:', playerRef.current.rotationSpeedMultiplier);
-        } else {
-          playerRef.current.projectilesPerShot = Math.max(1, Math.min(9, (Number(playerRef.current.projectilesPerShot) || 1) + 1));
-          console.log('Projectiles per shot:', playerRef.current.projectilesPerShot);
+        {
+          const speedFactor = 1.3;
+          swordsToAffect.forEach((sw) => {
+            if (!sw) return;
+            sw.rotationSpeed *= speedFactor;
+          });
         }
         break;
-      case 'mage_power':
-        playerRef.current.rangedDamageMultiplier *= 1.2;
+      case 'sword_count':
+        if (currentClass === 'knight') {
+          addSwordInstanceFromPowerup();
+        }
         break;
-      case 'mage_haste':
-        playerRef.current.rotationSpeedMultiplier *= 1.15;
+      case 'multi_shot':
+        playerRef.current.projectilesPerShot = Math.max(1, Math.min(9, (Number(playerRef.current.projectilesPerShot) || 1) + 1));
+        console.log('Projectiles per shot:', playerRef.current.projectilesPerShot);
         break;
-      case 'mage_focus':
-        playerRef.current.projectileSpeedMultiplier *= 1.15;
+      case 'attack_speed':
+        // Utilisé pour la cadence de tir mage/ranger (cooldown basé sur rotationSpeedMultiplier)
+        playerRef.current.rotationSpeedMultiplier *= 1.3;
         break;
-      case 'mage_barrier':
-        playerRef.current.damageTakenMultiplier *= 0.9;
-        break;
-      case 'ranger_damage':
-        playerRef.current.rangedDamageMultiplier *= 1.2;
-        break;
-      case 'ranger_speed':
-        playerRef.current.projectileSpeedMultiplier *= 1.2;
-        break;
-      case 'ranger_range':
-        playerRef.current.projectileRangeMultiplier *= 1.25;
-        break;
-      case 'ranger_evasion':
-        playerRef.current.speedMultiplier *= 1.2;
-        break;
-      case 'ranger_armor':
-        playerRef.current.damageTakenMultiplier *= 0.9;
+      case 'size_bonus':
+        // Taille projectiles (ranger)
+        playerRef.current.fireballSizeMultiplier *= 1.2;
         break;
       case 'spear_count':
         if (isTemplar) {
           const currentCount = Array.isArray(spearsRef.current) ? spearsRef.current.length : 0;
-          const next = Math.min(6, currentCount + 1);
-          if (next > currentCount) {
-            const spread = next === 1 ? 0 : 0.22;
-            const angleOffset = (currentCount - (next - 1) / 2) * spread;
-            addSpearInstanceFromPowerup(angleOffset);
-          }
-        }
-        break;
-      case 'spear_damage':
-        if (spearsRef.current && spearsRef.current.length > 0) {
-          spearsRef.current.forEach((s) => {
-            if (s) s.damage *= 1.25;
-          });
+          const next = currentCount + 1;
+          const spread = next === 1 ? 0 : 0.22;
+          const angleOffset = (currentCount - (next - 1) / 2) * spread;
+          addSpearInstanceFromPowerup(angleOffset);
         }
         break;
       case 'spear_size':
@@ -2639,7 +2796,11 @@ const Game = () => {
           const gameWorld = gameWorldRef.current;
           spearsRef.current.forEach((s) => {
             if (!s) return;
-            s.tipRadius = (Number(s.tipRadius) || 22) * 1.25;
+            const scaleFactor = 1.2;
+            s.tipRadius = (Number(s.tipRadius) || 22) * scaleFactor;
+            if (s.sprite && s.sprite.scale) {
+              s.sprite.scale.set(s.sprite.scale.x * scaleFactor, s.sprite.scale.y * scaleFactor);
+            }
             if (gameWorld) {
               if (s.hitboxSprite && s.hitboxSprite.parent) {
                 s.hitboxSprite.parent.removeChild(s.hitboxSprite);
@@ -2651,23 +2812,16 @@ const Game = () => {
           });
         }
         break;
-      case 'spear_reach':
+      case 'spear_speed':
         if (spearsRef.current && spearsRef.current.length > 0) {
           spearsRef.current.forEach((s) => {
             if (!s) return;
-            s.baseDistance = (Number(s.baseDistance) || 70) * 1.2;
-            s.thrustDistance = (Number(s.thrustDistance) || 75) * 1.2;
+            s.thrustSpeed *= 1.3;
           });
         }
         break;
-      case 'templar_guard':
-        playerRef.current.damageTakenMultiplier *= 0.9;
-        break;
-      case 'templar_haste':
-        playerRef.current.rotationSpeedMultiplier *= 1.15;
-        break;
-      case 'attack_speed':
-        playerRef.current.rotationSpeedMultiplier *= 1.15;
+      case 'explosion_size':
+        playerRef.current.explosionSizeMultiplier *= 1.8;
         break;
       default:
         console.warn('Type de powerup inconnu:', powerupType);

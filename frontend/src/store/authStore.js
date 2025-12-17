@@ -7,6 +7,30 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api
 // Configure axios defaults
 axios.defaults.baseURL = API_BASE_URL;
 
+// Ensure Authorization header is always applied when a token exists
+// (covers cases where axios defaults are lost / rehydration timing issues)
+if (!axios.__LAST_REALM_AUTH_INTERCEPTOR__) {
+  axios.__LAST_REALM_AUTH_INTERCEPTOR__ = true;
+  axios.interceptors.request.use((config) => {
+    try {
+      const raw = localStorage.getItem('auth-storage');
+      const parsed = raw ? JSON.parse(raw) : null;
+      const token = parsed?.state?.token;
+
+      if (token) {
+        config.headers = config.headers || {};
+        if (!config.headers.Authorization && !config.headers.authorization) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return config;
+  });
+}
+
 const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -174,6 +198,12 @@ const useAuthStore = create(
     }),
     {
       name: 'auth-storage',
+      onRehydrateStorage: () => (state) => {
+        const token = state?.token;
+        if (token) {
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+      },
       partialize: (state) => ({
         user: state.user,
         token: state.token,

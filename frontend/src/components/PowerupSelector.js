@@ -5,78 +5,87 @@ const PowerupSelector = ({ onSelect, onCancel, playerClass }) => {
 
   const isMeleeClass = playerClass === 'knight' || playerClass === 'templar';
 
-  const weaponCountPowerup = useMemo(() => {
+  const classPowerups = useMemo(() => {
+    if (playerClass === 'knight') {
+      return [
+        { id: 'sword_size', name: 'Épée plus grande', description: '+20% taille de l\'épée', icon: '📏', color: '#FF6B6B' },
+        { id: 'sword_spin', name: 'Épée plus rapide', description: '+30% vitesse de rotation', icon: '🌀', color: '#A78BFA' },
+        { id: 'sword_count', name: 'Double épée', description: '+1 épée', icon: '⚔️', color: '#EAB308' }
+      ];
+    }
     if (playerClass === 'templar') {
-      return { id: 'spear_count', name: 'Nombre de lances', description: '+1 lance', icon: '🗡️', color: '#EAB308' };
+      return [
+        { id: 'spear_count', name: 'Nombre de lances', description: '+1 lance', icon: '🗡️', color: '#EAB308' },
+        { id: 'spear_size', name: 'Lance plus grande', description: '+20% taille de la lance', icon: '📏', color: '#FF6B6B' },
+        { id: 'spear_speed', name: 'Lance plus rapide', description: '+30% vitesse d\'attaque', icon: '⏱️', color: '#A78BFA' }
+      ];
     }
-    if (playerClass === 'mage' || playerClass === 'ranger') {
-      return { id: 'multi_shot', name: 'Multi-tir', description: '+1 projectile par attaque', icon: '✨', color: '#A78BFA' };
+    if (playerClass === 'ranger') {
+      return [
+        { id: 'multi_shot', name: 'Multi-tir', description: '+1 flèche par attaque', icon: '🏹', color: '#EAB308' },
+        { id: 'attack_speed', name: "Vitesse d'attaque", description: '+30% tirs par seconde', icon: '⏱️', color: '#A78BFA' },
+        { id: 'size_bonus', name: 'Projectiles plus grands', description: '+20% taille', icon: '📏', color: '#FF6B6B' }
+      ];
     }
-    return { id: 'sword_radius', name: 'Portée de l\'épée', description: '+20% rayon de rotation', icon: '🌀', color: '#A78BFA' };
+    // mage / arcanist
+    return [
+      { id: 'multi_shot', name: 'Multi-tir', description: '+1 boule par attaque', icon: '✨', color: '#EAB308' },
+      { id: 'attack_speed', name: "Vitesse d'attaque", description: '+30% tirs par seconde', icon: '⏱️', color: '#A78BFA' },
+      { id: 'explosion_size', name: 'Explosion', description: '+80% taille explosion', icon: '💥', color: '#FF6B6B' }
+    ];
   }, [playerClass]);
 
   const universalPowerups = useMemo(() => ([
     {
       id: 'player_speed',
       name: 'Vitesse',
-      description: '+20% vitesse de déplacement',
+      description: '+50% vitesse de déplacement',
       icon: '⚡',
       color: '#FFD700'
     },
     {
       id: 'damage_bonus',
       name: 'Dégâts',
-      description: '+20% dégâts',
+      description: '+30% dégâts',
       icon: '💥',
       color: '#4ECDC4'
     },
     {
       id: 'damage_reduction',
       name: 'Armure',
-      description: '-15% dégâts subis',
+      description: '-20% dégâts subis',
       icon: '🛡️',
       color: '#60A5FA'
     },
     {
-      id: 'size_bonus',
-      name: 'Grosseur',
-      description: '+20% taille (arme ou projectiles)',
-      icon: '📏',
-      color: '#FF6B6B'
-    },
-    {
-      id: 'attack_speed',
-      name: "Vitesse d'attaque",
-      description: '+15% vitesse d\'attaque',
-      icon: '⏱️',
-      color: '#A78BFA'
-    },
-    weaponCountPowerup,
-    {
       id: 'hp_up',
-      name: 'Vitalité',
-      description: '+20 PV max et +20 PV',
+      name: 'Soin',
+      description: '+50 PV max et +30 PV',
       icon: '❤️',
       color: '#F43F5E'
     }
-  ]), [weaponCountPowerup]);
+  ]), []);
+
+  const pool = useMemo(() => {
+    return [...universalPowerups, ...classPowerups];
+  }, [universalPowerups, classPowerups]);
 
   const choices = useMemo(() => {
-    const pool = universalPowerups;
+    const poolLocal = pool;
     const used = new Set();
     const picked = [];
-    const max = Math.min(3, pool.length);
+    const max = Math.min(3, poolLocal.length);
 
     for (let guard = 0; guard < 50 && picked.length < max; guard += 1) {
-      const idx = Math.floor(Math.random() * pool.length);
-      const p = pool[idx];
+      const idx = Math.floor(Math.random() * poolLocal.length);
+      const p = poolLocal[idx];
       if (!p || used.has(p.id)) continue;
       used.add(p.id);
       picked.push(p);
     }
 
     if (picked.length < max) {
-      for (const p of pool) {
+      for (const p of poolLocal) {
         if (!p || used.has(p.id)) continue;
         used.add(p.id);
         picked.push(p);
@@ -85,7 +94,7 @@ const PowerupSelector = ({ onSelect, onCancel, playerClass }) => {
     }
 
     return picked;
-  }, [universalPowerups, isMeleeClass]);
+  }, [pool, isMeleeClass]);
 
   const handleSelect = (powerupId) => {
     onSelect(powerupId);

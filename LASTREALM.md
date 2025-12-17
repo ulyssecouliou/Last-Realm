@@ -60,21 +60,53 @@ arrivent en plus grand nombre.
 
 ⚔️ 2. Upgrades (améliorations)
 
-À chaque montée de niveau, le joueur choisit entre 3 upgrades aléatoires (provenant du backend via /api/upgrades).
+À chaque montée de niveau (ou en ramassant certains bonus sur la carte), le joueur choisit entre **3 améliorations** aléatoires.
 
-Exemples :
+Les améliorations sont séparées en 2 pools :
 
-+15 % vitesse d’attaque
+- **Pool commun (toutes classes)**
+- **Pool de classe** (spécifique au héros choisi)
 
-+20 % de santé max
+### Pool commun (toutes classes)
 
-Nouvelle compétence : Lame spectrale
+| ID | Effet |
+|---|---|
+| `player_speed` | +50% vitesse de déplacement |
+| `damage_bonus` | +30% dégâts |
+| `damage_reduction` | -20% dégâts subis |
+| `hp_up` | +50 PV max et +30 PV |
 
-Aura magique qui brûle les ennemis proches
+### Pool Chevalier (Knight)
 
-Invocation d’un esprit allié
+| ID | Effet |
+|---|---|
+| `sword_size` | +20% taille/hitbox de l’épée |
+| `sword_spin` | +30% vitesse de rotation de l’épée |
+| `sword_count` | +1 épée |
 
-Les upgrades peuvent être communes, rares, épiques ou légendaires (selon leur puissance).
+### Pool Rôdeur (Ranger)
+
+| ID | Effet |
+|---|---|
+| `multi_shot` | +1 flèche par attaque |
+| `attack_speed` | +30% tirs par seconde |
+| `size_bonus` | +20% taille des projectiles |
+
+### Pool Arcaniste (Mage)
+
+| ID | Effet |
+|---|---|
+| `multi_shot` | +1 boule par attaque |
+| `attack_speed` | +30% tirs par seconde |
+| `explosion_size` | +80% taille/rayon d’explosion |
+
+### Pool Templier (Templar)
+
+| ID | Effet |
+|---|---|
+| `spear_count` | +1 lance (sans limite) |
+| `spear_size` | +20% taille de la lance |
+| `spear_speed` | +30% vitesse d’attaque de la lance |
 
 💰 3. Récompenses & progression
 
