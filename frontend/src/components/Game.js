@@ -2290,15 +2290,14 @@ const Game = () => {
                       if (monster instanceof EpicMonster) {
                         epicKillsRef.current += 1;
                       }
-                    }
-                    // Donner de l'expérience au joueur
-                    const leveledUp = playerRef.current.gainExperience(25);
-                    if (leveledUp) {
-                      // Déclencher un powerup automatiquement
-                      console.log('🎉 Niveau supérieur! Powerup automatique!');
-                      setCurrentPowerup({ type: 'level_up', isLevelUp: true }); // Powerup spécial de niveau
-                      setShowPowerupSelector(true);
-                      powerupCollisionDetectedRef.current = true;
+
+                      const leveledUp = playerRef.current.gainExperience(25);
+                      if (leveledUp) {
+                        console.log('🎉 Niveau supérieur! Powerup automatique!');
+                        setCurrentPowerup({ type: 'level_up', isLevelUp: true });
+                        setShowPowerupSelector(true);
+                        powerupCollisionDetectedRef.current = true;
+                      }
                     }
                   }
                 }
