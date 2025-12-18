@@ -6,7 +6,7 @@ const TRACKS = {
   menu: '/music/menu.mp3',
   game: '/music/game.mp3',
   boss: '/music/ost_cynthia.mp3',
-  hero: '/music/100.%20MEGALOVANIA%20(UNDERTALE%20Soundtrack)%20-%20Toby%20Fox.mp3'
+  hero: '/music/HERO.mp3'
 };
 
 export const MusicProvider = ({ children }) => {

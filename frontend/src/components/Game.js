@@ -726,15 +726,21 @@ const Game = () => {
   const MAP_WIDTH = 2400; // 4x plus grande que 600x600
   const MAP_HEIGHT = 2400; // 4x plus grande que 600x600
 
+  const SHOW_HITBOXES = false;
+
   // Fonction pour créer une hitbox visuelle
   const createHitboxSprite = (radius, color = 0xff0000, alpha = 0.3) => {
     const hitbox = new PIXI.Graphics();
-    hitbox.beginFill(color, alpha);
+    const effectiveAlpha = SHOW_HITBOXES ? alpha : 0;
+    hitbox.beginFill(color, effectiveAlpha);
     hitbox.drawCircle(0, 0, radius);
     hitbox.endFill();
-    // Ajouter un contour pour mieux voir
-    hitbox.lineStyle(2, color, 0.8);
-    hitbox.drawCircle(0, 0, radius);
+    if (SHOW_HITBOXES) {
+      hitbox.lineStyle(2, color, 0.8);
+      hitbox.drawCircle(0, 0, radius);
+    } else {
+      hitbox.visible = false;
+    }
     return hitbox;
   };
 
@@ -875,13 +881,18 @@ const Game = () => {
   // Fonction pour créer une hitbox rectangulaire (pour l'épée)
   const createSwordHitboxSprite = (width, height, color = 0x0000ff, alpha = 0.3) => {
     const hitbox = new PIXI.Graphics();
-    hitbox.beginFill(color, alpha);
+    const effectiveAlpha = SHOW_HITBOXES ? alpha : 0;
+    hitbox.beginFill(color, effectiveAlpha);
     // Centrer la hitbox pour qu'elle s'étende équitablement vers l'avant et vers l'arrière
     hitbox.drawRect(-width/2, -height/2, width, height);
     hitbox.endFill();
-    // Ajouter un contour pour mieux voir
-    hitbox.lineStyle(2, color, 0.8);
-    hitbox.drawRect(-width/2, -height/2, width, height);
+    if (SHOW_HITBOXES) {
+      // Ajouter un contour pour mieux voir
+      hitbox.lineStyle(2, color, 0.8);
+      hitbox.drawRect(-width/2, -height/2, width, height);
+    } else {
+      hitbox.visible = false;
+    }
     return hitbox;
   };
 
