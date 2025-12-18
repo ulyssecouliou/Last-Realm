@@ -4,13 +4,23 @@ if (typeof window !== 'undefined') {
   const originalError = console.error;
   const originalWarn = console.warn;
 
+  const isResizeObserverNoise = (value) => {
+    try {
+      const msg = (value?.message || value)?.toString?.() || '';
+      return (
+        msg.includes('ResizeObserver loop completed') ||
+        msg.includes('ResizeObserver loop limit exceeded') ||
+        msg.includes('ResizeObserver loop completed with undelivered notifications') ||
+        msg.includes('ResizeObserver')
+      );
+    } catch (e) {
+      return false;
+    }
+  };
+
   // Override console.error
   console.error = (...args) => {
-    const message = args[0]?.toString() || '';
-    if (
-      message.includes('ResizeObserver loop completed') ||
-      message.includes('ResizeObserver loop limit exceeded')
-    ) {
+    if (args.some(isResizeObserverNoise)) {
       return; // Suppress ResizeObserver errors
     }
     originalError.apply(console, args);
@@ -18,8 +28,7 @@ if (typeof window !== 'undefined') {
 
   // Override console.warn for ResizeObserver warnings
   console.warn = (...args) => {
-    const message = args[0]?.toString() || '';
-    if (message.includes('ResizeObserver')) {
+    if (args.some(isResizeObserverNoise)) {
       return; // Suppress ResizeObserver warnings
     }
     originalWarn.apply(console, args);
@@ -27,11 +36,7 @@ if (typeof window !== 'undefined') {
 
   // Handle window error events
   window.addEventListener('error', (e) => {
-    if (
-      e.message?.includes('ResizeObserver loop completed') ||
-      e.message?.includes('ResizeObserver loop limit exceeded') ||
-      e.message?.includes('ResizeObserver')
-    ) {
+    if (isResizeObserverNoise(e?.message) || isResizeObserverNoise(e?.error)) {
       if (typeof e.stopImmediatePropagation === 'function') {
         e.stopImmediatePropagation();
       }
@@ -43,10 +48,7 @@ if (typeof window !== 'undefined') {
 
   // Handle unhandled promise rejections
   window.addEventListener('unhandledrejection', (e) => {
-    if (
-      e.reason?.message?.includes('ResizeObserver') ||
-      e.reason?.toString()?.includes('ResizeObserver')
-    ) {
+    if (isResizeObserverNoise(e?.reason)) {
       e.preventDefault();
       return false;
     }

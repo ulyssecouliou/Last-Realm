@@ -1349,26 +1349,30 @@ const Game = () => {
           radius: 120
         };
 
-        try {
-          console.log('🔄 Initialisation de l\'arme dans le backend...');
-          const response = await fetch('http://localhost:5000/api/weapons/initialize', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
+        const ENABLE_WEAPON_BACKEND_INIT = false;
+
+        if (ENABLE_WEAPON_BACKEND_INIT) {
+          try {
+            console.log('🔄 Initialisation de l\'arme dans le backend...');
+            const response = await fetch('http://localhost:5000/api/weapons/initialize', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+            console.log('📡 Réponse reçue:', response.status, response.statusText);
+            
+            if (response.ok) {
+              const backendStats = await response.json();
+              weaponStats = backendStats;
+              console.log('✅ Arme initialisée et stats chargées depuis le backend:', weaponStats);
+            } else {
+              console.warn('⚠️  Backend répond mais erreur:', response.status);
             }
-          });
-          console.log('📡 Réponse reçue:', response.status, response.statusText);
-          
-          if (response.ok) {
-            const backendStats = await response.json();
-            weaponStats = backendStats;
-            console.log('✅ Arme initialisée et stats chargées depuis le backend:', weaponStats);
-          } else {
-            console.warn('⚠️  Backend répond mais erreur:', response.status);
+          } catch (error) {
+            console.warn('⚠️  Backend indisponible, utilisation du fallback:', error.message);
+            console.log('🛡️  Stats de fallback utilisées:', weaponStats);
           }
-        } catch (error) {
-          console.warn('⚠️  Backend indisponible, utilisation du fallback:', error.message);
-          console.log('🛡️  Stats de fallback utilisées:', weaponStats);
         }
 
         const addSpearInstance = (angleOffset = 0) => {
@@ -1871,19 +1875,70 @@ const Game = () => {
                 const rangeMult = Math.max(0.25, Number(playerRef.current?.projectileRangeMultiplier) || 1);
                 const speedMult = Math.max(0.25, Number(playerRef.current?.projectileSpeedMultiplier) || 1);
                 const attackRange = (playerClassRef.current === 'ranger' ? 700 : 520) * rangeMult;
+                const useMouseAim = Boolean(aimModeMouseRef.current);
+                const mx = Number(mouseWorldRef.current?.x);
+                const my = Number(mouseWorldRef.current?.y);
+
+                const speed = (playerClassRef.current === 'ranger' ? 6.2 : 4.2) * speedMult;
+                const sizeMultiplier = playerRef.current?.fireballSizeMultiplier || 1;
+                const damageMultiplier = (playerRef.current?.damageMultiplier || 1) * (playerRef.current?.rangedDamageMultiplier || 1);
+                const count = Math.max(1, Math.min(9, Number(playerRef.current?.projectilesPerShot) || 1));
+
+                // Mage: en mode souris, on tire vers la souris même s'il n'y a pas d'ennemi à portée.
+                if (playerClassRef.current === 'mage' && useMouseAim && Number.isFinite(mx) && Number.isFinite(my)) {
+                  const angle = Math.atan2(my - playerRef.current.y, mx - playerRef.current.x);
+                  const vx = Math.cos(angle) * speed;
+                  const vy = Math.sin(angle) * speed;
+
+                  const spawnProjectile = () => {
+                    if (!playerRef.current) return;
+                    const fireball = new PlayerProjectile(playerRef.current.x, playerRef.current.y, vx, vy, sizeMultiplier, damageMultiplier);
+                    fireball.isFireball = true;
+                    const fireballSprite = createPlayerProjectileSprite();
+                    try { fireballSprite.scale.set(fireballSprite.scale.x * sizeMultiplier, fireballSprite.scale.y * sizeMultiplier); } catch (e) {}
+                    fireball.setSprite(fireballSprite);
+                    gameWorld.addChild(fireballSprite);
+                    playerProjectilesRef.current.push(fireball);
+                  };
+
+                  // Tir en rafale "d'affilée" sur la même trajectoire
+                  const burstDelayMs = 70;
+                  for (let i = 0; i < count; i += 1) {
+                    if (i === 0) spawnProjectile();
+                    else setTimeout(spawnProjectile, i * burstDelayMs);
+                  }
+
+                  mageLastShotAtRef.current = nowMsMage;
+                  return;
+                }
+
+                // Ranger: en mode souris, on tire vers la souris même s'il n'y a pas d'ennemi à portée.
+                if (playerClassRef.current === 'ranger' && useMouseAim && Number.isFinite(mx) && Number.isFinite(my)) {
+                  const baseAngle = Math.atan2(my - playerRef.current.y, mx - playerRef.current.x);
+                  const spread = count === 1 ? 0 : 0.18;
+                  for (let i = 0; i < count; i += 1) {
+                    const offset = (i - (count - 1) / 2) * spread;
+                    const angle = baseAngle + offset;
+                    const vx = Math.cos(angle) * speed;
+                    const vy = Math.sin(angle) * speed;
+
+                    const maxDist = 720 * rangeMult;
+                    const arrow = new RangerArrow(playerRef.current.x, playerRef.current.y, vx, vy, sizeMultiplier, damageMultiplier, maxDist);
+                    const arrowSprite = createRangerProjectileSprite();
+                    try { arrowSprite.scale.set(arrowSprite.scale.x * sizeMultiplier, arrowSprite.scale.y * sizeMultiplier); } catch (e) {}
+                    arrow.setSprite(arrowSprite);
+                    gameWorld.addChild(arrowSprite);
+                    playerProjectilesRef.current.push(arrow);
+                  }
+                  mageLastShotAtRef.current = nowMsMage;
+                  return;
+                }
+
                 if (best && bestDist > 0 && bestDist <= attackRange) {
-                  const useMouseAim = Boolean(aimModeMouseRef.current);
-                  const mx = Number(mouseWorldRef.current?.x);
-                  const my = Number(mouseWorldRef.current?.y);
 
                   const dx = useMouseAim && Number.isFinite(mx) ? (mx - playerRef.current.x) : (best.x - playerRef.current.x);
                   const dy = useMouseAim && Number.isFinite(my) ? (my - playerRef.current.y) : (best.y - playerRef.current.y);
                   const dist = Math.sqrt(dx * dx + dy * dy);
-                  const speed = (playerClassRef.current === 'ranger' ? 6.2 : 4.2) * speedMult;
-                  const sizeMultiplier = playerRef.current?.fireballSizeMultiplier || 1;
-                  const damageMultiplier = (playerRef.current?.damageMultiplier || 1) * (playerRef.current?.rangedDamageMultiplier || 1);
-
-                  const count = Math.max(1, Math.min(9, Number(playerRef.current?.projectilesPerShot) || 1));
 
                   if (playerClassRef.current === 'mage') {
                     // Récupérer les monstres à portée et les trier par distance croissante
