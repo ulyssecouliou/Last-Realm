@@ -2614,7 +2614,30 @@ const Game = () => {
             clearTimeout(powerupSelectorTimeoutRef.current);
           }
           if (appRef.current) {
-            appRef.current.destroy(true);
+            try {
+              if (appRef.current.ticker) {
+                appRef.current.ticker.stop();
+                try {
+                  appRef.current.ticker.remove(gameLoop);
+                } catch (e) {
+                  // ignore
+                }
+              }
+            } catch (e) {
+              // ignore
+            }
+
+            try {
+              // PixiJS v8: destroy expects an options object (boolean signature is deprecated)
+              appRef.current.destroy({ removeView: true, children: true });
+            } catch (e) {
+              try {
+                appRef.current.destroy();
+              } catch (e2) {
+                // ignore
+              }
+            }
+            appRef.current = null;
           }
         };
 
